@@ -29,6 +29,10 @@ case "$c" in
   listen)    h "tess listen" "Hands-free: say \"tess, <what you want>\". Uses whisper + local model. Ctrl+C to stop." ;;
   voice)     h "tess voice" "Type/dictate loop (pairs with Wispr Flow)." ;;
   agents)    h "tess agents" "Dashboard of running AI agents (hcom)." ;;
+  loop)      h "tess loop <claude|kimi> \"<goal>\" [max-rounds]" \
+    "Autonomous manager->worker loop: a manager agent plays YOU, reviews the worker's last report, and issues the next instruction until the goal is DONE." \
+    "Runs headless with tools + skipped permissions, in the current folder. Ctrl+C stops. Transcript saved to ~/.local/share/tess-loop/." \
+    "${D}e.g. tess loop claude \"add tests for the auth module and make them pass\"${R}" ;;
 
   people|companies) h "tess people | companies" "Roster of your contacts / companies (from note tags + folders)." ;;
   reminders|todos|followups) h "tess reminders" "Open follow-ups — every unchecked '- [ ]' item across your vault." ;;

@@ -53,6 +53,7 @@ cat <<EOF
      ${C}tess listen${R}         hands-free — just say "tess, <what you want>"
      ${C}tess voice${R}          type/dictate loop (Wispr Flow)
      ${C}tess agents${R}         dashboard of all running agents (hcom)
+     ${C}tess loop${R} ${D}<claude|kimi> "<goal>"${R}  autonomous — it drives itself till done
 
   ${B}${G}⚡ TOOLS${R}
      ${C}tess git${R}            visual git — branches/commits (lazygit)
@@ -308,6 +309,7 @@ case "$cmd" in
     exec hcom "$cmd" --run-here
     ;;
   agents)   exec hcom ;;
+  loop)     exec bash "$HOME/.local/bin/_tess-loop.sh" "$@" ;;
   resume|r) exec python3 "$HOME/.local/bin/_tess-resume.py" ;;
   local|offline)   # offline AI (no internet). `tess local [small|big] [prompt]`
     case "${1:-}" in
