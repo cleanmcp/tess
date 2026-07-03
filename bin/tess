@@ -82,6 +82,7 @@ cat <<EOF
 
   ${B}${G}🩺 SYSTEM${R}
      ${C}tess doctor${R}         check your Mac's health (file limits, disk)
+     ${C}tess fix-files${R}      permanently raise the macOS open-file limit
      ${C}tess disk${R}           disk usage of your worktrees (slow)
      ${C}tess cheat${R}          open the full cheatsheet
 
@@ -300,7 +301,7 @@ case "$cmd" in
       pct=$(( now * 100 / max ))
       printf "  open files:  %s / %s  (%s%%)  " "$now" "$max" "$pct"
       if [ "$pct" -ge 85 ]; then echo "${Y}⚠ HIGH — close dev servers / reboot${R}";
-      elif [ "$max" -lt 100000 ]; then echo "${Y}⚠ low ceiling — apply permanent fix (tess cheat)${R}";
+      elif [ "$max" -lt 100000 ]; then echo "${Y}⚠ low ceiling — run: tess fix-files${R}";
       else echo "${G}ok${R}"; fi
     fi
     printf "  features:    "; wt ls 2>/dev/null | grep -c .
@@ -317,6 +318,25 @@ case "$cmd" in
     ;;
 
   cheat)    bat "$HOME/cmux-cheatsheet.md" 2>/dev/null || cat "$HOME/cmux-cheatsheet.md" ;;
+
+  fix-files|fixfiles)   # permanently raise the macOS open-file limit (asks for your password)
+    [ "$(uname)" = "Darwin" ] || { echo "macOS only."; exit 1; }
+    echo "${B}raising the open-file limit (needs your password)…${R}"
+    plist=/Library/LaunchDaemons/limit.maxfiles.plist
+    sudo tee "$plist" >/dev/null <<'PL'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>limit.maxfiles</string>
+  <key>ProgramArguments</key><array><string>launchctl</string><string>limit</string><string>maxfiles</string><string>524288</string><string>524288</string></array>
+  <key>RunAtLoad</key><true/><key>ServiceIPC</key><false/>
+</dict></plist>
+PL
+    sudo chown root:wheel "$plist"
+    sudo launchctl load -w "$plist" 2>/dev/null || true
+    sudo sysctl -w kern.maxfiles=524288 kern.maxfilesperproc=131072 >/dev/null
+    echo "${G}✓ done${R} — cap raised now and on every reboot. Check with: tess doctor"
+    ;;
 
   # --- brain / notes ---
   brief)    _show "$HUB/NOW.md" ;;
