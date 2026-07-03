@@ -23,6 +23,9 @@ fi
 [ -f "$HOME/.config/tess/config" ] && . "$HOME/.config/tess/config"
 export TESS_VAULT TESS_HUB TESS_WORKTREE_ROOT TESS_CORE TESS_REPOS TESS_REPOS_ALL TESS_MAIN_BRANCH TESS_STARTUP_OPEN TESS_STARTUP_QUIT
 
+# keep tess current: background, throttled (~6h), never blocks
+[ -x "$HOME/.local/bin/_tess-update.sh" ] && nohup "$HOME/.local/bin/_tess-update.sh" >/dev/null 2>&1 &
+
 menu() {
 cat <<EOF
 
@@ -94,6 +97,7 @@ cat <<EOF
      ${C}tess fix-files${R}      permanently raise the macOS open-file limit
      ${C}tess disk${R}           disk usage of your worktrees (slow)
      ${C}tess cheat${R}          open the full cheatsheet
+     ${C}tess update${R}         pull the latest tess (auto-runs in bg too)
 
   ${D}type ${R}${C}tess help${R}${D} anytime to see this again${R}
 
@@ -191,6 +195,7 @@ cmd="${1:-menu}"; shift 2>/dev/null || true
 
 case "$cmd" in
   menu|help|-h|--help|"") menu ;;
+  update)   exec bash "$HOME/.local/bin/_tess-update.sh" --now ;;
 
   # apps + login/startup
   open|app|launch) exec bash "$HOME/.local/bin/_tess-apps.sh" open "$@" ;;
