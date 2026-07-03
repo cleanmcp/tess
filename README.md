@@ -137,3 +137,23 @@ Point your agents at it by adding a short section to their instructions (`CLAUDE
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+## Customizing (survives updates)
+
+Everything user-specific lives in **`~/.config/tess/`** — *outside* the repo — so `git pull` (and the background auto-update) never overwrites it:
+
+```
+~/.config/tess/
+├── config          # your paths, repos, startup apps (TESS_* vars)
+├── models          # local model tiers
+└── commands/       # your own commands: an executable `foo` here → run as `tess foo`
+```
+
+Add a custom command:
+```bash
+tess commands new deploy      # scaffolds ~/.config/tess/commands/deploy, opens it
+# ...edit it...
+tess deploy                   # runs it; TESS_* config vars are available inside
+```
+
+Custom commands show in `tess` under **🧩 YOUR COMMANDS** and are never clobbered by updates. To update tess itself: `tess update` (or it auto-pulls in the background). `--ff-only` means it also won't clobber the repo if you've hacked on it locally.

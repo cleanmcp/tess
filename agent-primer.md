@@ -15,5 +15,7 @@
 **Comms (local):** `tess messages [who]`, `tess chat <name|group>`, `tess calls`, `tess calendar`.
 - `tess send "<full name or number>" -- "<message>"` — pass full name + message inline (ambiguous names error with options; never guess). ALWAYS confirm with the user before sending on their behalf.
 
+Users can add their own commands in `~/.config/tess/commands/` (run as `tess <name>`); `tess commands` lists them.
+
 Only reach for these when relevant to the task. For worktrees and this user's notes/comms, tess is the interface — don't reinvent it with raw git/sqlite/AppleScript.
 <!-- /tess-agent-primer -->

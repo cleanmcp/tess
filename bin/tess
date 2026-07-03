@@ -102,6 +102,12 @@ cat <<EOF
   ${D}type ${R}${C}tess help${R}${D} anytime to see this again${R}
 
 EOF
+  local cdir="$HOME/.config/tess/commands"
+  if [ -d "$cdir" ] && [ -n "$(ls -A "$cdir" 2>/dev/null)" ]; then
+    printf "  %s%s🧩 YOUR COMMANDS%s %s(custom — survive updates)%s\n" "$B" "$G" "$R" "$D" "$R"
+    for x in "$cdir"/*; do [ -x "$x" ] && printf "     %stess %s%s\n" "$C" "$(basename "$x")" "$R"; done
+    echo
+  fi
 }
 
 # --- vault lookup (on-demand; no per-session token cost) ---
@@ -196,6 +202,23 @@ cmd="${1:-menu}"; shift 2>/dev/null || true
 case "$cmd" in
   menu|help|-h|--help|"") menu ;;
   update)   exec bash "$HOME/.local/bin/_tess-update.sh" --now ;;
+  commands|custom)
+    cdir="$HOME/.config/tess/commands"; mkdir -p "$cdir"
+    case "${1:-list}" in
+      new|add|create)
+        [ -z "${2:-}" ] && { echo "usage: tess commands new <name>"; exit 1; }
+        f="$cdir/$2"
+        if [ ! -e "$f" ]; then
+          printf '#!/usr/bin/env bash\n# tess %s — custom command. Args come in as \$@.\n# Config vars (TESS_VAULT etc.) are exported and available here.\necho "hello from tess %s ($*)"\n' "$2" "$2" > "$f"
+          chmod +x "$f"
+        fi
+        echo "created $f — edit it, then run: tess $2"
+        ${EDITOR:-open} "$f" 2>/dev/null || true ;;
+      *) echo "${B}your custom commands${R} ${D}($cdir)${R}"
+         if [ -n "$(ls -A "$cdir" 2>/dev/null)" ]; then
+           for x in "$cdir"/*; do [ -x "$x" ] && echo "  ${C}tess $(basename "$x")${R}"; done
+         else echo "  ${D}(none yet — make one: tess commands new <name>)${R}"; fi ;;
+    esac ;;
 
   # apps + login/startup
   open|app|launch) exec bash "$HOME/.local/bin/_tess-apps.sh" open "$@" ;;
@@ -390,6 +413,11 @@ PL
   listen)   exec bash "$HOME/.local/bin/_tess-listen.sh" ;;   # hands-free wake word
 
   *)
+    # user's custom commands live in ~/.config/tess/commands/ (never in the repo,
+    # so `git pull` never overwrites them). tess <name> -> run that script.
+    if [ -x "$HOME/.config/tess/commands/$cmd" ]; then
+      exec "$HOME/.config/tess/commands/$cmd" "$@"
+    fi
     # bare `tess <word>`: an installed app -> open it
     if [ $# -eq 0 ]; then
       _appm=$(find /Applications /System/Applications "$HOME/Applications" -maxdepth 2 -iname "${cmd}.app" 2>/dev/null | head -1)
