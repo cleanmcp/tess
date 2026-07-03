@@ -79,7 +79,7 @@ cat <<EOF
      ${C}tess send${R} ${D}<name> -- <msg>${R}  send an iMessage
      ${C}tess calls${R}          recent call log
      ${C}tess read${R} ${D}[title]${R}     reading companion for your current book
-     ${C}tess music${R} ${D}[play|next|<song>]${R}  control Apple Music
+     ${C}tess music${R} ${D}[search <q>]${R}  Apple Music — art, fuzzy-play, catalog
 
   ${B}${G}🩺 SYSTEM${R}
      ${C}tess doctor${R}         check your Mac's health (file limits, disk)
@@ -356,7 +356,7 @@ PL
   chat|thread)  python3 "$HOME/.local/bin/_tess-chat.py" "$@" ;;
   send|text)    exec bash "$HOME/.local/bin/_tess-send.sh" "$@" ;;
   calls)        python3 "$HOME/.local/bin/_tess-calls.py" ;;
-  music)        exec bash "$HOME/.local/bin/_tess-music.sh" "$@" ;;
+  music)        exec python3 "$HOME/.local/bin/_tess-music.py" "$@" ;;
   read|book)    exec python3 "$HOME/.local/bin/_tess-read.py" "$@" ;;
   readpos)      python3 "$HOME/.local/bin/_tess-readpos.py" "$@" ;;
 
