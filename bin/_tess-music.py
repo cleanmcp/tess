@@ -138,7 +138,7 @@ elif cmd == "play":            # fuzzy-play from library (agent-friendly)
     if line:
         play_library_line(line); card()
 
-elif cmd == "search":          # catalog search -> pick -> play in Music
+elif cmd == "search":          # catalog search -> pick -> play (library if owned, else open in Music)
     if not rest:
         print("usage: tess music search <query>"); sys.exit(1)
     res = catalog(rest)
@@ -152,8 +152,19 @@ elif cmd == "search":          # catalog search -> pick -> play in Music
         pick = res[lines.index(sel)]
     else:
         pick = res[0]
-    subprocess.run(["open", pick["trackViewUrl"]])   # Music app deep-links + plays
-    print(f"  ▶ {pick['trackName']} — {pick['artistName']}")
+    name, artist = pick["trackName"], pick["artistName"]
+    # if it's in your library, play it directly (auto-plays); otherwise open in the native Music app
+    lib = library()
+    owned = next((l for l in lib if name.lower() in l.lower() and artist.split("&")[0].strip().lower() in l.lower()), None)
+    if owned:
+        play_library_line(owned)
+        print(f"  ▶ {name} — {artist}  {C.grey}(from your library){C.r}")
+    else:
+        # Music's own URL handler → native app, bypasses cmux's browser. Catalog tracks open the page (press play).
+        u = pick["trackViewUrl"].replace('"', '')
+        subprocess.run(["osascript", "-e", f'tell application "Music" to open location "{u}"'])
+        subprocess.run(["osascript", "-e", 'tell application "Music" to activate'])
+        print(f"  ▶ opened in Music: {C.bold}{name}{C.r} — {artist}  {C.grey}(press play — catalog songs can't auto-start via script){C.r}")
     render_art(pick["artworkUrl100"].replace("100x100bb", "450x450bb"))
 
 else:
