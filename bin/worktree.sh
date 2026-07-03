@@ -28,7 +28,7 @@ CORE_DIR="${TESS_CORE:-$WORKTREE_PARENT/repos}"
 read -r -a REPOS <<< "${TESS_REPOS:-}"
 
 # env files are discovered recursively at copy time (see copy_env_files),
-# so nested ones like apps/web/.env.local are carried over too.
+# so nested ones (e.g. a sub-app's .env.local) are carried over too.
 
 # branch every worktree off this by default (override with the 2nd arg)
 DEFAULT_BASE="main"
