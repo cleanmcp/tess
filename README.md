@@ -37,7 +37,7 @@ Then edit **`~/.config/tess/config`** to point at your notes vault and repos (se
 ## What it does
 
 ### 🧠 Brain — your markdown vault (read/write, on demand)
-Works with any markdown notes folder (Obsidian, Lokus, plain files). Nothing auto-loads, so it costs zero tokens until you ask.
+Works with any markdown notes folder. The recommended app is **[Lokus](https://github.com/lokus-ai/lokus)** (the installer can grab it for you), but Obsidian or plain files work too. Nothing auto-loads, so it costs zero tokens until you ask.
 ```
 tess <name>                  read a note (person / project / topic)
 tess people | companies      rosters (from note tags/folders)

@@ -39,6 +39,28 @@ echo
 # ---------- optional, skippable steps ----------
 echo "Optional setup (all skippable):"
 
+install_lokus() {
+  if [ -d "/Applications/Lokus.app" ]; then echo "  Lokus already installed."; return; fi
+  if [ "$(uname -m)" != "arm64" ]; then
+    echo "  no Apple-Silicon build detected for your Mac — grab Lokus from https://github.com/lokus-ai/lokus/releases"; return
+  fi
+  local url tmp vol app
+  url="$(curl -fsSL https://api.github.com/repos/lokus-ai/lokus/releases/latest | grep -o 'https://[^"]*aarch64\.dmg' | head -1)"
+  [ -z "$url" ] && { echo "  couldn't find the Lokus dmg — see https://github.com/lokus-ai/lokus/releases"; return; }
+  tmp="$(mktemp -d)"
+  echo "  downloading Lokus…"
+  curl -fL --progress-bar "$url" -o "$tmp/Lokus.dmg" || { echo "  download failed"; return; }
+  vol="$(hdiutil attach "$tmp/Lokus.dmg" -nobrowse -quiet | grep -o '/Volumes/.*' | tail -1)"
+  app="$(find "$vol" -maxdepth 1 -name '*.app' 2>/dev/null | head -1)"
+  [ -n "$app" ] && cp -R "$app" /Applications/ && echo "  installed Lokus to /Applications ✓" || echo "  couldn't copy Lokus.app"
+  [ -n "$vol" ] && hdiutil detach "$vol" -quiet 2>/dev/null || true
+  rm -rf "$tmp"
+}
+
+if ask "0. Install Lokus (the recommended notes vault app for tess)?"; then
+  install_lokus
+fi
+
 if command -v brew >/dev/null 2>&1; then
   if ask "1. Install nice-to-have CLI tools (fzf zoxide lazygit eza bat ripgrep chafa)?"; then
     brew install fzf zoxide lazygit eza bat ripgrep chafa || true
