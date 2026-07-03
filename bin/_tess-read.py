@@ -102,7 +102,8 @@ if not os.path.exists(cache_file):
 
 pct = round((prog or 0) * 100)
 clean = re.sub(r'[<>:"/\\|?*]', "", (title or "book").split("/")[0]).strip()[:70].strip()
-book_note = os.path.expanduser(f"$TESS_VAULT/Books/{clean}.md")
+vault = os.environ.get("TESS_VAULT", os.path.expanduser("~/Documents/tess-vault"))
+book_note = os.path.join(vault, "Books", f"{clean}.md")
 mode = open(os.path.expanduser("~/.claude/modes/read.md")).read()
 mode += (f"\n\n---\n**Current book:** {title} — {author}. Full text: `{cache_file}`. "
          f"**Reading-notes file for this book:** `{book_note}` (read it at start; append his lessons/observations per chapter there). "
