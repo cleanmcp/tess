@@ -17,8 +17,9 @@ fi
 : "${TESS_CORE:=$TESS_WORKTREE_ROOT/repos}"       # where your source repos live
 : "${TESS_REPOS:=}"                               # default repos to fan out (space-separated)
 : "${TESS_REPOS_ALL:=$TESS_REPOS}"                # repos incl. optional ones (used by --all)
+: "${TESS_MAIN_BRANCH:=main}"                     # default branch (for `tess branches`)
 [ -f "$HOME/.config/tess/config" ] && . "$HOME/.config/tess/config"
-export TESS_VAULT TESS_HUB TESS_WORKTREE_ROOT TESS_CORE TESS_REPOS TESS_REPOS_ALL
+export TESS_VAULT TESS_HUB TESS_WORKTREE_ROOT TESS_CORE TESS_REPOS TESS_REPOS_ALL TESS_MAIN_BRANCH
 
 menu() {
 cat <<EOF
@@ -33,6 +34,8 @@ cat <<EOF
      ${C}tess env${R} ${D}<name>${R}      refresh .env files into a feature
      ${C}tess clean${R}          clear dead worktree junk
      ${C}tess branches${R}       delete old merged branches (safe)
+     ${C}tess path${R} ${D}<feat> [repo]${R}  print a worktree's path (for cd)
+     ${C}tess wt${R}             worktree status across repos
 
   ${B}${G}🤖 AI AGENTS${R}
      ${C}tess think${R}          thinking partner — company brain, researches while you talk
@@ -122,7 +125,7 @@ _add() {
   file=$(find "$VAULT" -type f -iname "${name}.md" -not -path "*/.*/*" 2>/dev/null | head -1)
   if [ -z "$file" ]; then
     mkdir -p "$HUB/Inbox"; file="$HUB/Inbox/${name}.md"
-    { echo "---"; echo "title: ${name}"; echo "tags: [clean, inbox]";
+    { echo "---"; echo "title: ${name}"; echo "tags: [inbox]";
       echo "created: $(date +%F)"; echo "description:"; echo "---"; echo;
       echo "# ${name}"; echo; } > "$file"
     echo "created ${file#$VAULT/}"
@@ -142,7 +145,7 @@ _newnote() {
   [ -z "$name" ] && { echo "usage: tess ${sub%s} <name> -- <description>"; return 1; }
   mkdir -p "$HUB/$sub"; file="$HUB/$sub/${name}.md"
   if [ ! -f "$file" ]; then
-    { echo "---"; echo "title: ${name}"; echo "tags: [clean, ${tag}]";
+    { echo "---"; echo "title: ${name}"; echo "tags: [${tag}]";
       echo "created: $(date +%F)"; echo "description: ${desc}"; echo "---"; echo;
       echo "# ${name}"; echo; [ -n "$desc" ] && { echo "$desc"; echo; }
       echo "## Notes"; } > "$file"
@@ -158,7 +161,7 @@ _log() {
   local text="$*"; text="${text#-- }"
   [ -z "$text" ] && { printf "log: "; read -r text; }
   mkdir -p "$HUB"; local f="$HUB/Log.md"
-  [ -f "$f" ] || { echo "---"; echo "title: Log"; echo "tags: [clean, log]"; echo "created: $(date +%F)"; echo "description: Running quick-capture log."; echo "---"; echo; echo "# Log"; echo; } > "$f"
+  [ -f "$f" ] || { echo "---"; echo "title: Log"; echo "tags: [log]"; echo "created: $(date +%F)"; echo "description: Running quick-capture log."; echo "---"; echo; echo "# Log"; echo; } > "$f"
   printf -- "- **%s** — %s\n" "$(date '+%Y-%m-%d %H:%M')" "$text" >> "$f"
   echo "✓ logged"
 }
@@ -185,6 +188,20 @@ case "$cmd" in
   rm)       wt rm "$@" ;;
   clean)    wt prune ;;
 
+  path)     # print a worktree path (for agents: cd "$(tess path <feature> [repo])")
+    feat="${1:-}"; repo="${2:-}"
+    [ -z "$feat" ] && { echo "usage: tess path <feature> [repo]" >&2; exit 1; }
+    p="$TESS_WORKTREE_ROOT/$feat"; [ -n "$repo" ] && p="$p/$repo"
+    [ -e "$p" ] && echo "$p" || { echo "not found: $p" >&2; exit 1; }
+    ;;
+
+  wt|worktrees)  # full worktree status across repos (so agents never call raw git worktree)
+    for repo in $TESS_REPOS_ALL; do
+      d="$TESS_CORE/$repo"; [ -d "$d" ] || continue
+      echo "${B}$repo${R}"; git -C "$d" worktree list 2>/dev/null | sed 's/^/  /'
+    done
+    ;;
+
   env)
     feat="${1:-}"; [ -z "$feat" ] && { echo "usage: tess env <feature>"; exit 1; }
     core="$TESS_CORE"
@@ -203,11 +220,11 @@ case "$cmd" in
     ;;
 
   branches)
-    echo "${B}branches already merged into main (safe to delete):${R}"
+    echo "${B}branches already merged into $TESS_MAIN_BRANCH (safe to delete):${R}"
     found=0
     for repo in $TESS_REPOS; do
       d="$TESS_CORE/$repo"
-      list=$(git -C "$d" branch --merged main 2>/dev/null | grep -vE '^\*| main$' | sed 's/^[+ ]*//' | grep -v '^main$')
+      list=$(git -C "$d" branch --merged "$TESS_MAIN_BRANCH" 2>/dev/null | grep -vE "^\*| ${TESS_MAIN_BRANCH}\$" | sed "s/^[+ ]*//" | grep -v "^${TESS_MAIN_BRANCH}\$")
       [ -n "$list" ] && { echo "  ${Y}$repo:${R}"; echo "$list" | sed 's/^/    /'; found=1; }
     done
     [ "$found" = 0 ] && { echo "  ${G}nothing to clean — all tidy${R}"; exit 0; }
@@ -215,7 +232,7 @@ case "$cmd" in
     if [[ "$yn" =~ ^[Yy]$ ]]; then
       for repo in $TESS_REPOS; do
         d="$TESS_CORE/$repo"
-        git -C "$d" branch --merged main 2>/dev/null | grep -vE '^\*| main$' | sed 's/^[+ ]*//' | grep -v '^main$' \
+        git -C "$d" branch --merged "$TESS_MAIN_BRANCH" 2>/dev/null | grep -vE "^\*| ${TESS_MAIN_BRANCH}\$" | sed "s/^[+ ]*//" | grep -v "^${TESS_MAIN_BRANCH}\$" \
           | while read -r b; do git -C "$d" branch -d "$b" 2>/dev/null && echo "  ${G}deleted${R} $repo/$b"; done
       done
     else echo "skipped."; fi

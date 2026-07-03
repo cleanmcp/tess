@@ -25,6 +25,23 @@ mkdir -p "$HOME/.config/tess"
 [ -f "$HOME/.config/tess/config" ] || { cp "$HERE/config.example" "$HOME/.config/tess/config"; echo "  created ~/.config/tess/config — edit it to set your vault + repos"; }
 [ -f "$HOME/.config/tess/models" ] || printf 'small=llama3.2:1b\nmed=llama3.2:3b\nbig=qwen2.5:7b\n' > "$HOME/.config/tess/models"
 
+say "› teaching your AI agents about tess"
+_inject_primer() {   # append the primer to an agent instructions file (idempotent)
+  local f="$1"
+  mkdir -p "$(dirname "$f")"; [ -f "$f" ] || : > "$f"
+  if grep -q "tess-agent-primer" "$f" 2>/dev/null; then
+    echo "  already wired: ${f/#$HOME/~}"
+  else
+    { echo; cat "$HERE/agent-primer.md"; } >> "$f"
+    echo "  wired tess into: ${f/#$HOME/~}"
+  fi
+}
+[ -d "$HOME/.claude" ]     && _inject_primer "$HOME/.claude/CLAUDE.md"       # Claude Code
+[ -d "$HOME/.kimi-code" ]  && _inject_primer "$HOME/.kimi-code/AGENTS.md"    # Kimi
+[ -d "$HOME/.codex" ]      && _inject_primer "$HOME/.codex/AGENTS.md"        # Codex
+[ -d "$HOME/.claude" ] || [ -d "$HOME/.kimi-code" ] || [ -d "$HOME/.codex" ] || \
+  echo "  (no agent config dirs found — add agent-primer.md to your agent's instructions manually)"
+
 case ":$PATH:" in
   *":$BIN:"*) ;;
   *) echo; echo "  ⚠ add this to your shell rc (~/.zshrc):"; echo "      export PATH=\"\$HOME/.local/bin:\$PATH\"";;
