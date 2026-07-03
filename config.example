@@ -10,3 +10,7 @@ TESS_CORE="$TESS_WORKTREE_ROOT/repos"        # your source repos live here (one 
 TESS_REPOS="app api"                         # default repos to fan out (space-separated)
 TESS_REPOS_ALL="app api web"                 # repos incl. optional ones (used by `tess new --all`)
 # TESS_GIT_REMOTE="https://github.com/your-org"  # optional: auto-clone missing repos from here
+
+# ── Startup (optional; for `tess startup`) ──
+TESS_STARTUP_OPEN="cmux Music Safari"        # apps to open at login
+TESS_STARTUP_QUIT=""                         # apps to quit at login (the flood, space-separated)

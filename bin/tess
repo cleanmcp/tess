@@ -18,8 +18,10 @@ fi
 : "${TESS_REPOS:=}"                               # default repos to fan out (space-separated)
 : "${TESS_REPOS_ALL:=$TESS_REPOS}"                # repos incl. optional ones (used by --all)
 : "${TESS_MAIN_BRANCH:=main}"                     # default branch (for `tess branches`)
+: "${TESS_STARTUP_OPEN:=cmux Music Safari}"      # apps `tess startup` opens
+: "${TESS_STARTUP_QUIT:=}"                        # apps `tess startup` quits (the login flood)
 [ -f "$HOME/.config/tess/config" ] && . "$HOME/.config/tess/config"
-export TESS_VAULT TESS_HUB TESS_WORKTREE_ROOT TESS_CORE TESS_REPOS TESS_REPOS_ALL TESS_MAIN_BRANCH
+export TESS_VAULT TESS_HUB TESS_WORKTREE_ROOT TESS_CORE TESS_REPOS TESS_REPOS_ALL TESS_MAIN_BRANCH TESS_STARTUP_OPEN TESS_STARTUP_QUIT
 
 menu() {
 cat <<EOF
@@ -80,6 +82,12 @@ cat <<EOF
      ${C}tess calls${R}          recent call log
      ${C}tess read${R} ${D}[title]${R}     reading companion for your current book
      ${C}tess music${R} ${D}[search <q>]${R}  Apple Music — art, fuzzy-play, catalog
+
+  ${B}${G}🖥️  APPS & STARTUP${R}
+     ${C}tess${R} ${D}<app>${R}         open any app — e.g. ${C}tess chrome${R} · ${C}tess arc${R}
+     ${C}tess apps${R}           fuzzy-pick an app to open
+     ${C}tess login${R}          what opens at login (rm/add to stop the flood)
+     ${C}tess startup${R}         open your set (cmux/Music/…); ${C}install${R} to run at login
 
   ${B}${G}🩺 SYSTEM${R}
      ${C}tess doctor${R}         check your Mac's health (file limits, disk)
@@ -183,6 +191,12 @@ cmd="${1:-menu}"; shift 2>/dev/null || true
 
 case "$cmd" in
   menu|help|-h|--help|"") menu ;;
+
+  # apps + login/startup
+  open|app|launch) exec bash "$HOME/.local/bin/_tess-apps.sh" open "$@" ;;
+  apps)     exec bash "$HOME/.local/bin/_tess-apps.sh" apps ;;
+  login)    exec bash "$HOME/.local/bin/_tess-apps.sh" login "$@" ;;
+  startup)  exec bash "$HOME/.local/bin/_tess-apps.sh" startup "$@" ;;
 
   # worktrees ---------------------------------------------------------------
   new)      wt "$@" ;;                       # wt prompts for a name if none given
@@ -371,7 +385,13 @@ PL
   listen)   exec bash "$HOME/.local/bin/_tess-listen.sh" ;;   # hands-free wake word
 
   *)
-    # bare `tess <words>`: a sentence/question -> voice router; a short name -> note lookup
+    # bare `tess <word>`: an installed app -> open it
+    if [ $# -eq 0 ]; then
+      _appm=$(find /Applications /System/Applications "$HOME/Applications" -maxdepth 2 -iname "${cmd}.app" 2>/dev/null | head -1)
+      [ -z "$_appm" ] && _appm=$(find /Applications /System/Applications "$HOME/Applications" -maxdepth 2 -iname "${cmd}*.app" 2>/dev/null | head -1)
+      if [ -n "$_appm" ]; then open "$_appm" && echo "▶ opened $(basename "$_appm" .app)"; exit 0; fi
+    fi
+    # a sentence/question -> voice router; a short name -> note lookup
     if [ $# -ge 3 ] || printf '%s %s' "$cmd" "$*" | grep -q '?'; then
       exec python3 "$HOME/.local/bin/_tess-ask.py" "$cmd" "$@"
     else
