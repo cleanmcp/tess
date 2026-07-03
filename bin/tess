@@ -98,6 +98,8 @@ cat <<EOF
      ${C}tess disk${R}           disk usage of your worktrees (slow)
      ${C}tess cheat${R}          open the full cheatsheet
      ${C}tess update${R}         pull the latest tess (auto-runs in bg too)
+     ${C}tess commands${R}       your custom commands (survive updates)
+     ${C}tess help${R} ${D}<cmd>${R}     detailed help for one command
 
   ${D}type ${R}${C}tess help${R}${D} anytime to see this again${R}
 
@@ -200,7 +202,8 @@ _localrun() {
 cmd="${1:-menu}"; shift 2>/dev/null || true
 
 case "$cmd" in
-  menu|help|-h|--help|"") menu ;;
+  menu|""|-h|--help) menu ;;
+  help) if [ $# -gt 0 ]; then exec bash "$HOME/.local/bin/_tess-help.sh" "$@"; else menu; fi ;;
   update)   exec bash "$HOME/.local/bin/_tess-update.sh" --now ;;
   commands|custom)
     cdir="$HOME/.config/tess/commands"; mkdir -p "$cdir"
