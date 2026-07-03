@@ -1,0 +1,12 @@
+# tess config — copy to ~/.config/tess/config and edit. Everything is optional (sane defaults).
+
+# ── Notes vault (Obsidian / Lokus / any markdown folder) ──
+TESS_VAULT="$HOME/Documents/tess-vault"     # your notes live here
+TESS_HUB="$TESS_VAULT/hub"                   # tess writes NOW / people / companies / notes here
+
+# ── Worktrees (optional; only if you use `tess new`/`wt`) ──
+TESS_WORKTREE_ROOT="$HOME/worktrees"         # feature worktrees are created here
+TESS_CORE="$TESS_WORKTREE_ROOT/repos"        # your source repos live here (one folder each)
+TESS_REPOS="app api"                         # default repos to fan out (space-separated)
+TESS_REPOS_ALL="app api web"                 # repos incl. optional ones (used by `tess new --all`)
+# TESS_GIT_REMOTE="https://github.com/your-org"  # optional: auto-clone missing repos from here

@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# wt — convenience wrapper around worktree.sh (multi-repo feature worktrees)
+#   wt <feature> [base]       create worktrees for your repos, open in cmux
+#   wt --all <feature> [base] ...also include optional repos
+#   wt rm <feature>           tear the feature's worktrees back down
+#   wt ls                     list existing feature worktrees in $TESS_WORKTREE_ROOT
+# Worktrees land at <worktree-root>/<feature>/<repo>.
+set -euo pipefail
+[ -f "$HOME/.config/tess/config" ] && . "$HOME/.config/tess/config"
+
+WASH="${TESS_WORKTREE_ROOT:-$HOME/worktrees}"
+SCRIPT="$(command -v worktree.sh || echo "$WASH/worktree.sh")"
+[ -x "$SCRIPT" ] || { echo "wt: $SCRIPT not found/executable" >&2; exit 1; }
+
+case "${1:-ls}" in
+  ls|list|"")
+    # show feature dirs (everything in $TESS_WORKTREE_ROOT that isn't the core/repo plumbing)
+    find "$WASH" -mindepth 1 -maxdepth 1 -type d ! -name "$(basename "${TESS_CORE:-repos}")" -exec basename {} \; | sort
+    exit 0
+    ;;
+  rm|remove)
+    shift; exec "$SCRIPT" rm "$@"
+    ;;
+  prune)
+    # clear stale worktree registrations left behind by manual folder deletes
+    for r in ${TESS_REPOS_ALL:-${TESS_REPOS:-}}; do
+      d="${TESS_CORE:-$WASH/repos}/$r"
+      [ -d "$d" ] && { echo "== $r =="; git -C "$d" worktree prune -v; }
+    done
+    echo "done. (orphan branches left intact — delete with: git -C $TESS_CORE/<repo> branch -D <name>)"
+    exit 0
+    ;;
+esac
+
+# create mode — run the real script, then open the new feature folder in cmux
+"$SCRIPT" "$@"
+
+# figure out the feature name (first arg that isn't a flag) and open it
+feat=""
+for a in "$@"; do
+  case "$a" in --all|--web) ;; *) feat="$a"; break ;; esac
+done
+if [ -n "$feat" ] && [ -d "$WASH/$feat" ]; then
+  cmux open "$WASH/$feat" >/dev/null 2>&1 && echo "→ opened $WASH/$feat in cmux" || true
+fi

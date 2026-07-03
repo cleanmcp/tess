@@ -1,0 +1,342 @@
+#!/usr/bin/env bash
+# tess — your terminal command center. Forget everything else, just type `tess`.
+set -uo pipefail
+
+# colors — only when stdout is a real terminal (piped/agent output stays clean)
+if [ -t 1 ]; then
+  B=$'\033[1m'; D=$'\033[2m'; R=$'\033[0m'
+  C=$'\033[36m'; G=$'\033[32m'; Y=$'\033[33m'; M=$'\033[35m'
+else
+  B=; D=; R=; C=; G=; Y=; M=
+fi
+
+# --- config: override any of these in ~/.config/tess/config ---
+: "${TESS_VAULT:=$HOME/Documents/tess-vault}"     # your markdown notes vault
+: "${TESS_HUB:=$TESS_VAULT/hub}"                  # where tess writes NOW/people/notes
+: "${TESS_WORKTREE_ROOT:=$HOME/worktrees}"        # where feature worktrees are created
+: "${TESS_CORE:=$TESS_WORKTREE_ROOT/repos}"       # where your source repos live
+: "${TESS_REPOS:=}"                               # default repos to fan out (space-separated)
+: "${TESS_REPOS_ALL:=$TESS_REPOS}"                # repos incl. optional ones (used by --all)
+[ -f "$HOME/.config/tess/config" ] && . "$HOME/.config/tess/config"
+export TESS_VAULT TESS_HUB TESS_WORKTREE_ROOT TESS_CORE TESS_REPOS TESS_REPOS_ALL
+
+menu() {
+cat <<EOF
+
+  ${B}${M}tess${R} ${D}— your terminal command center${R}
+
+  ${B}${G}🌳 WORKTREES${R} ${D}(isolated copies of your repos to code in)${R}
+     ${C}tess new${R} ${D}[name]${R}     new feature worktree across your repos, opens in cmux
+     ${C}tess new --all${R} ${D}name${R}  ...include optional repos too
+     ${C}tess ls${R}             list your feature folders
+     ${C}tess rm${R} ${D}<name>${R}       delete a feature (clean way)
+     ${C}tess env${R} ${D}<name>${R}      refresh .env files into a feature
+     ${C}tess clean${R}          clear dead worktree junk
+     ${C}tess branches${R}       delete old merged branches (safe)
+
+  ${B}${G}🤖 AI AGENTS${R}
+     ${C}tess think${R}          thinking partner — company brain, researches while you talk
+     ${C}tess post${R}           daily content partner — your voice, learns your taste
+     ${C}tess claude${R} ${D}[feat]${R}  launch Claude — in worktree <feat> if named
+     ${C}tess kimi${R} ${D}[feat]${R}    launch Kimi — in worktree <feat> if named
+     ${C}tess resume${R}         resume ANY past Claude/Kimi session (any folder)
+     ${C}tess local${R} ${D}[prompt]${R}  offline AI — no internet (also ${C}tess small${R} / ${C}tess big${R})
+     ${C}tess ask${R} ${D}"<q>"${R}      ask in words — routes to the right thing + speaks it
+     ${C}tess listen${R}         hands-free — just say "tess, <what you want>"
+     ${C}tess voice${R}          type/dictate loop (Wispr Flow)
+     ${C}tess agents${R}         dashboard of all running agents (hcom)
+
+  ${B}${G}⚡ TOOLS${R}
+     ${C}tess git${R}            visual git — branches/commits (lazygit)
+     ${C}z${R} ${D}<name>${R}           jump to any folder you've visited
+     ${C}Ctrl+R${R}             search your command history
+     ${C}ll${R} / ${C}lt${R}            pretty file list / tree view
+
+  ${B}${G}🐾 FUN${R}
+     ${C}tess fish${R}           ascii aquarium      ${C}tess matrix${R}   matrix rain
+     ${C}tess bonsai${R}         growing bonsai      ${C}tess dex${R}      random pokemon
+     ${C}tess pipes${R}          pipes screensaver
+
+  ${B}${G}🧠 BRAIN${R} ${D}(your Lokus vault — on-demand, no token cost)${R}
+     ${C}tess${R} ${D}<name>${R}        show a note — e.g. ${C}tess john${R} · ${C}tess acme${R}
+     ${C}tess people${R}         roster — everyone, with a one-liner
+     ${C}tess companies${R}      companies you track
+     ${C}tess reminders${R}      open follow-ups / to-dos
+     ${C}tess person${R} ${D}<name> -- <desc>${R}   add a person (shows in roster)
+     ${C}tess company${R} ${D}<name> -- <desc>${R}  add a company
+     ${C}tess add${R} ${D}<name> -- <text>${R}  add/append to a note (creates if new)
+     ${C}tess log${R} ${D}-- <text>${R}   quick timestamped capture
+     ${C}tess brief${R}          what's going on right now (NOW.md)
+     ${C}tess company${R}        your hub note
+
+  ${B}${G}📱 LIFE${R} ${D}(macOS — needs permission, one-time)${R}
+     ${C}tess calendar${R} ${D}[days]${R}  upcoming events
+     ${C}tess messages${R} ${D}[who]${R}   recent iMessages/SMS
+     ${C}tess chat${R} ${D}<name>${R}      full conversation + inline images
+     ${C}tess send${R} ${D}<name> -- <msg>${R}  send an iMessage
+     ${C}tess calls${R}          recent call log
+     ${C}tess read${R} ${D}[title]${R}     reading companion for your current book
+
+  ${B}${G}🩺 SYSTEM${R}
+     ${C}tess doctor${R}         check your Mac's health (file limits, disk)
+     ${C}tess disk${R}           disk usage of your worktrees (slow)
+     ${C}tess cheat${R}          open the full cheatsheet
+
+  ${D}type ${R}${C}tess help${R}${D} anytime to see this again${R}
+
+EOF
+}
+
+# --- vault lookup (on-demand; no per-session token cost) ---
+VAULT="$TESS_VAULT"
+HUB="$TESS_HUB"
+_show() { command -v bat >/dev/null 2>&1 && bat --style=plain --paging=never "$1" || cat "$1"; }
+_lookup() {
+  local q="$*" exact matches n file pick
+  # 1) exact note-name match wins
+  exact=$(find "$VAULT" -type f -iname "${q}.md" -not -path "*/.*/*" 2>/dev/null | head -1)
+  if [ -n "$exact" ]; then _show "$exact"; return 0; fi
+  # 2) partial name match, else content match
+  matches=$(find "$VAULT" -type f -iname "*${q}*.md" -not -path "*/.*/*" 2>/dev/null | head -20)
+  [ -z "$matches" ] && matches=$(grep -rilF "$q" "$VAULT" --include="*.md" 2>/dev/null | grep -v '/\.' | head -20)
+  n=$(printf '%s\n' "$matches" | grep -c .)
+  if [ "$n" -eq 0 ]; then echo "tess: no note found for '${q}'. (searched your vault)"; return 1; fi
+  if [ "$n" -eq 1 ]; then _show "$matches"; return 0; fi
+  echo "${B}notes matching '${q}':${R}"
+  printf '%s\n' "$matches" | sed "s#$VAULT/##" | nl -w2 -s'. '
+  [ -t 0 ] || { echo "(multiple matches — refine the name)"; return 0; }
+  printf "pick # (Enter to cancel): "; read -r pick
+  case "$pick" in ''|*[!0-9]*) echo "cancelled."; return 0 ;; esac
+  file=$(printf '%s\n' "$matches" | sed -n "${pick}p")
+  [ -n "$file" ] && _show "$file"
+}
+
+_add() {
+  # tess add <note name...> -- <text...>   (creates the note if missing)
+  local name="" text="" seen=0 a file
+  for a in "$@"; do
+    if [ "$a" = "--" ]; then seen=1; continue; fi
+    if [ $seen -eq 0 ]; then name="${name:+$name }$a"; else text="${text:+$text }$a"; fi
+  done
+  [ -z "$name" ] && { echo "usage: tess add <note name> -- <text>"; return 1; }
+  file=$(find "$VAULT" -type f -iname "${name}.md" -not -path "*/.*/*" 2>/dev/null | head -1)
+  if [ -z "$file" ]; then
+    mkdir -p "$HUB/Inbox"; file="$HUB/Inbox/${name}.md"
+    { echo "---"; echo "title: ${name}"; echo "tags: [clean, inbox]";
+      echo "created: $(date +%F)"; echo "description:"; echo "---"; echo;
+      echo "# ${name}"; echo; } > "$file"
+    echo "created ${file#$VAULT/}"
+  fi
+  [ -z "$text" ] && { printf "text: "; read -r text; }
+  printf -- "- %s — %s\n" "$(date '+%Y-%m-%d %H:%M')" "$text" >> "$file"
+  echo "✓ added to ${file#$VAULT/}"
+}
+_newnote() {
+  # _newnote <subdir> <tag> <name...> -- <description...>
+  local sub="$1" tag="$2"; shift 2
+  local name="" desc="" seen=0 a file
+  for a in "$@"; do
+    if [ "$a" = "--" ]; then seen=1; continue; fi
+    if [ $seen -eq 0 ]; then name="${name:+$name }$a"; else desc="${desc:+$desc }$a"; fi
+  done
+  [ -z "$name" ] && { echo "usage: tess ${sub%s} <name> -- <description>"; return 1; }
+  mkdir -p "$HUB/$sub"; file="$HUB/$sub/${name}.md"
+  if [ ! -f "$file" ]; then
+    { echo "---"; echo "title: ${name}"; echo "tags: [clean, ${tag}]";
+      echo "created: $(date +%F)"; echo "description: ${desc}"; echo "---"; echo;
+      echo "# ${name}"; echo; [ -n "$desc" ] && { echo "$desc"; echo; }
+      echo "## Notes"; } > "$file"
+    echo "✓ created ${sub}/${name}"
+  else
+    [ -n "$desc" ] && printf -- "- %s — %s\n" "$(date '+%Y-%m-%d %H:%M')" "$desc" >> "$file"
+    echo "✓ updated ${sub}/${name}"
+  fi
+  _show "$file"
+}
+_log() {
+  # tess log -- <text>   quick timestamped capture into the running log
+  local text="$*"; text="${text#-- }"
+  [ -z "$text" ] && { printf "log: "; read -r text; }
+  mkdir -p "$HUB"; local f="$HUB/Log.md"
+  [ -f "$f" ] || { echo "---"; echo "title: Log"; echo "tags: [clean, log]"; echo "created: $(date +%F)"; echo "description: Running quick-capture log."; echo "---"; echo; echo "# Log"; echo; } > "$f"
+  printf -- "- **%s** — %s\n" "$(date '+%Y-%m-%d %H:%M')" "$text" >> "$f"
+  echo "✓ logged"
+}
+_localrun() {
+  # _localrun <tier> [prompt...]  — run the local model for that size tier
+  command -v ollama >/dev/null 2>&1 || { echo "ollama not installed (brew install ollama)"; return 1; }
+  local tier="$1"; shift
+  local m; m=$(grep "^${tier}=" "$HOME/.config/tess/models" 2>/dev/null | cut -d= -f2)
+  [ -z "$m" ] && m="llama3.2:3b"
+  if ! ollama list 2>/dev/null | awk '{print $1}' | grep -qx "$m"; then
+    echo "model '$m' ($tier) not pulled yet — run:  ollama pull $m"; return 1
+  fi
+  if [ $# -gt 0 ]; then exec ollama run "$m" "$*"; else exec ollama run "$m"; fi
+}
+
+cmd="${1:-menu}"; shift 2>/dev/null || true
+
+case "$cmd" in
+  menu|help|-h|--help|"") menu ;;
+
+  # worktrees ---------------------------------------------------------------
+  new)      wt "$@" ;;                       # wt prompts for a name if none given
+  ls|list)  echo "${B}Your features:${R}"; wt ls ;;
+  rm)       wt rm "$@" ;;
+  clean)    wt prune ;;
+
+  env)
+    feat="${1:-}"; [ -z "$feat" ] && { echo "usage: tess env <feature>"; exit 1; }
+    core="$TESS_CORE"
+    [ -d "$TESS_WORKTREE_ROOT/$feat" ] || { echo "no feature '$feat' (see: tess ls)"; exit 1; }
+    echo "${B}refreshing env for '$feat'${R}"
+    for repo in $TESS_REPOS_ALL; do
+      src="$core/$repo"; dst="$TESS_WORKTREE_ROOT/$feat/$repo"
+      [ -d "$dst" ] || continue
+      echo "  ${Y}$repo${R}"
+      find "$src" \( -name node_modules -o -name .git -o -name .next -o -name dist -o -name build \) -prune -o \
+        -type f \( -name '.env' -o -name '.env.*' \) ! -name '*.example' ! -name '*.sample' -print0 |
+      while IFS= read -r -d '' f; do
+        rel="${f#"$src"/}"; mkdir -p "$dst/$(dirname "$rel")"; cp -p "$f" "$dst/$rel"; echo "    ${G}✓${R} $rel"
+      done
+    done
+    ;;
+
+  branches)
+    echo "${B}branches already merged into main (safe to delete):${R}"
+    found=0
+    for repo in $TESS_REPOS; do
+      d="$TESS_CORE/$repo"
+      list=$(git -C "$d" branch --merged main 2>/dev/null | grep -vE '^\*| main$' | sed 's/^[+ ]*//' | grep -v '^main$')
+      [ -n "$list" ] && { echo "  ${Y}$repo:${R}"; echo "$list" | sed 's/^/    /'; found=1; }
+    done
+    [ "$found" = 0 ] && { echo "  ${G}nothing to clean — all tidy${R}"; exit 0; }
+    printf "\n${B}delete all of these? [y/N]${R} "; read -r yn
+    if [[ "$yn" =~ ^[Yy]$ ]]; then
+      for repo in $TESS_REPOS; do
+        d="$TESS_CORE/$repo"
+        git -C "$d" branch --merged main 2>/dev/null | grep -vE '^\*| main$' | sed 's/^[+ ]*//' | grep -v '^main$' \
+          | while read -r b; do git -C "$d" branch -d "$b" 2>/dev/null && echo "  ${G}deleted${R} $repo/$b"; done
+      done
+    else echo "skipped."; fi
+    ;;
+
+  # agents — launch plain so prompts work normally. Coordination is opt-in:
+  # run `hcom start` INSIDE an agent to join the shared room when you want it.
+  claude|kimi)
+    # tess claude|kimi [feature]
+    #   no feature -> launch in current dir
+    #   feature    -> create the worktree if missing, launch the agent inside it
+    # Always hcom-coordinated via --run-here (current tab, prompts work normally).
+    feat="${1:-}"
+    if [ -n "$feat" ]; then
+      dir="$TESS_WORKTREE_ROOT/$feat"
+      if [ ! -d "$dir" ]; then
+        echo "${B}creating worktree '$feat'…${R}"
+        worktree.sh "$feat" || exit 1
+      fi
+      echo "${D}opening $cmd in a new cmux workspace at $dir (hcom-coordinated)…${R}"
+      # NO --run-here: let hcom open a fresh cmux workspace AT the feature dir,
+      # so the sidebar labels it correctly (not the tab you launched from).
+      exec hcom "$cmd" --dir "$dir"
+    fi
+    # no feature -> stay in the current tab
+    exec hcom "$cmd" --run-here
+    ;;
+  agents)   exec hcom ;;
+  resume|r) exec python3 "$HOME/.local/bin/_tess-resume.py" ;;
+  local|offline)   # offline AI (no internet). `tess local [small|big] [prompt]`
+    case "${1:-}" in
+      small|med|medium|big) t="$1"; shift; _localrun "$t" "$@" ;;
+      *) _localrun med "$@" ;;
+    esac
+    ;;
+  small)  _localrun small "$@" ;;   # fastest local model
+  big)    _localrun big "$@" ;;     # best-quality local model your Mac can run
+  think|partner)
+    # thinking-partner mode: company context, sounding board (not idea-firehose),
+    # researches in the background while it keeps talking to you.
+    exec claude --add-dir "$TESS_VAULT" \
+      --append-system-prompt "$(cat "$HOME/.claude/modes/think.md")" "$@"
+    ;;
+  post|write|brand)
+    # daily content partner: your voice + proven mechanics, learns your taste each session.
+    exec claude --add-dir "$TESS_VAULT" \
+      --append-system-prompt "$(cat "$HOME/.claude/modes/post.md")" "$@"
+    ;;
+
+  # tools -------------------------------------------------------------------
+  git|lg)   exec lazygit ;;
+
+  # fun ---------------------------------------------------------------------
+  fish)     exec asciiquarium ;;
+  matrix)   exec cmatrix -b ;;
+  bonsai)   exec cbonsai -l -i ;;
+  pipes)    exec pipes.sh ;;
+  dex)      pokemon-colorscripts -r ;;
+
+  # system doctor -----------------------------------------------------------
+  doctor)
+    echo "${B}🩺 system check${R}"
+    max=$(sysctl -n kern.maxfiles 2>/dev/null); now=$(sysctl -n kern.num_files 2>/dev/null)
+    if [ -n "${max:-}" ] && [ -n "${now:-}" ]; then
+      pct=$(( now * 100 / max ))
+      printf "  open files:  %s / %s  (%s%%)  " "$now" "$max" "$pct"
+      if [ "$pct" -ge 85 ]; then echo "${Y}⚠ HIGH — close dev servers / reboot${R}";
+      elif [ "$max" -lt 100000 ]; then echo "${Y}⚠ low ceiling — apply permanent fix (tess cheat)${R}";
+      else echo "${G}ok${R}"; fi
+    fi
+    printf "  features:    "; wt ls 2>/dev/null | grep -c .
+    printf "  local model: "
+    if command -v ollama >/dev/null 2>&1; then ollama list 2>/dev/null | awk 'NR==2{print $1" ("$3$4")"}' | grep . || echo "none pulled"; else echo "ollama not installed"; fi
+    echo "  ${D}(disk size: run 'tess disk' — it's slow on big node_modules)${R}"
+    ;;
+
+  disk)
+    echo "${B}measuring worktrees (may take a bit)...${R}"
+    du -sh "$TESS_WORKTREE_ROOT" 2>/dev/null
+    echo "${D}biggest features:${R}"
+    du -sh "$TESS_WORKTREE_ROOT"/*/ 2>/dev/null | sort -rh | head -6
+    ;;
+
+  cheat)    bat "$HOME/cmux-cheatsheet.md" 2>/dev/null || cat "$HOME/cmux-cheatsheet.md" ;;
+
+  # --- brain / notes ---
+  brief)    _show "$HUB/NOW.md" ;;
+  hub)      _show "$HUB/hub.md" ;;
+  person)   _newnote "People" "person" "$@" ;;
+  company)  if [ $# -gt 0 ]; then _newnote "Companies" "company" "$@"; else _show "$HUB/hub.md"; fi ;;
+  add)      _add "$@" ;;
+  log)      _log "$@" ;;
+  people)   python3 "$HOME/.local/bin/_tess-list.py" people ;;
+  companies|company-list) python3 "$HOME/.local/bin/_tess-list.py" companies ;;
+  reminders|todos|followups) python3 "$HOME/.local/bin/_tess-list.py" reminders ;;
+
+  # --- life (macOS: calendar / messages / calls) ---
+  calendar|cal) exec "$HOME/.local/bin/_tess-cal" "$@" ;;
+  messages|msg) python3 "$HOME/.local/bin/_tess-msg.py" "$@" ;;
+  chat|thread)  python3 "$HOME/.local/bin/_tess-chat.py" "$@" ;;
+  send|text)    exec bash "$HOME/.local/bin/_tess-send.sh" "$@" ;;
+  calls)        python3 "$HOME/.local/bin/_tess-calls.py" ;;
+  read|book)    exec python3 "$HOME/.local/bin/_tess-read.py" "$@" ;;
+  readpos)      python3 "$HOME/.local/bin/_tess-readpos.py" "$@" ;;
+
+  ask)      exec python3 "$HOME/.local/bin/_tess-ask.py" "$@" ;;
+  voice)
+    echo "🎙  type or dictate (Wispr Flow) — Ctrl+C to stop."
+    while printf "\n🎙  tess> " && read -r line; do
+      [ -z "$line" ] && continue
+      python3 "$HOME/.local/bin/_tess-ask.py" $line
+    done
+    ;;
+  listen)   exec bash "$HOME/.local/bin/_tess-listen.sh" ;;   # hands-free wake word
+
+  *)
+    # bare `tess <words>`: a sentence/question -> voice router; a short name -> note lookup
+    if [ $# -ge 3 ] || printf '%s %s' "$cmd" "$*" | grep -q '?'; then
+      exec python3 "$HOME/.local/bin/_tess-ask.py" "$cmd" "$@"
+    else
+      _lookup "$cmd" "$@"
+    fi
+    ;;
+esac
