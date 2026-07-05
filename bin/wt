@@ -9,8 +9,11 @@ set -euo pipefail
 [ -f "$HOME/.config/tess/config" ] && . "$HOME/.config/tess/config"
 
 WASH="${TESS_WORKTREE_ROOT:-$HOME/worktrees}"
-SCRIPT="$(command -v worktree.sh || echo "$WASH/worktree.sh")"
-[ -x "$SCRIPT" ] || { echo "wt: $SCRIPT not found/executable" >&2; exit 1; }
+# prefer the worktree.sh sitting next to THIS script (works from a repo checkout too)
+_src="${BASH_SOURCE[0]}"; while [ -L "$_src" ]; do _src="$(readlink "$_src")"; done
+SCRIPT="$(cd "$(dirname "$_src")" && pwd)/worktree.sh"
+[ -x "$SCRIPT" ] || SCRIPT="$(command -v worktree.sh || echo "$WASH/worktree.sh")"
+[ -x "$SCRIPT" ] || { echo "wt: worktree.sh not found/executable" >&2; exit 1; }
 
 case "${1:-ls}" in
   ls|list|"")

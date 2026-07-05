@@ -23,8 +23,17 @@ fi
 [ -f "$HOME/.config/tess/config" ] && . "$HOME/.config/tess/config"
 export TESS_VAULT TESS_HUB TESS_WORKTREE_ROOT TESS_CORE TESS_REPOS TESS_REPOS_ALL TESS_MAIN_BRANCH TESS_STARTUP_OPEN TESS_STARTUP_QUIT
 
+# helpers live next to THIS script (resolve the symlink) — so a repo checkout
+# runs its own helpers, and the installed copy keeps one consistent version.
+_src="${BASH_SOURCE[0]}"; while [ -L "$_src" ]; do _src="$(readlink "$_src")"; done
+TESS_BIN="$(cd "$(dirname "$_src")" && pwd)"
+export TESS_BIN
+# hcom may be a real install or run via uvx (unquoted $HCOM is intentional)
+command -v hcom >/dev/null 2>&1 && HCOM=hcom || HCOM="uvx hcom"
+export TESS_HCOM="$HCOM"
+
 # keep tess current: background, throttled (~6h), never blocks
-[ -x "$HOME/.local/bin/_tess-update.sh" ] && nohup "$HOME/.local/bin/_tess-update.sh" >/dev/null 2>&1 &
+[ -x "$TESS_BIN/_tess-update.sh" ] && nohup "$TESS_BIN/_tess-update.sh" >/dev/null 2>&1 &
 
 menu() {
 cat <<EOF
@@ -204,8 +213,8 @@ cmd="${1:-menu}"; shift 2>/dev/null || true
 
 case "$cmd" in
   menu|""|-h|--help) menu ;;
-  help) if [ $# -gt 0 ]; then exec bash "$HOME/.local/bin/_tess-help.sh" "$@"; else menu; fi ;;
-  update)   exec bash "$HOME/.local/bin/_tess-update.sh" --now ;;
+  help) if [ $# -gt 0 ]; then exec bash "$TESS_BIN/_tess-help.sh" "$@"; else menu; fi ;;
+  update)   exec bash "$TESS_BIN/_tess-update.sh" --now ;;
   commands|custom)
     cdir="$HOME/.config/tess/commands"; mkdir -p "$cdir"
     case "${1:-list}" in
@@ -225,16 +234,16 @@ case "$cmd" in
     esac ;;
 
   # apps + login/startup
-  open|app|launch) exec bash "$HOME/.local/bin/_tess-apps.sh" open "$@" ;;
-  apps)     exec bash "$HOME/.local/bin/_tess-apps.sh" apps ;;
-  login)    exec bash "$HOME/.local/bin/_tess-apps.sh" login "$@" ;;
-  startup)  exec bash "$HOME/.local/bin/_tess-apps.sh" startup "$@" ;;
+  open|app|launch) exec bash "$TESS_BIN/_tess-apps.sh" open "$@" ;;
+  apps)     exec bash "$TESS_BIN/_tess-apps.sh" apps ;;
+  login)    exec bash "$TESS_BIN/_tess-apps.sh" login "$@" ;;
+  startup)  exec bash "$TESS_BIN/_tess-apps.sh" startup "$@" ;;
 
   # worktrees ---------------------------------------------------------------
-  new)      wt "$@" ;;                       # wt prompts for a name if none given
-  ls|list)  echo "${B}Your features:${R}"; wt ls ;;
-  rm)       wt rm "$@" ;;
-  clean)    wt prune ;;
+  new)      "$TESS_BIN/wt" "$@" ;;           # wt prompts for a name if none given
+  ls|list)  echo "${B}Your features:${R}"; "$TESS_BIN/wt" ls ;;
+  rm)       "$TESS_BIN/wt" rm "$@" ;;
+  clean)    "$TESS_BIN/wt" prune ;;
 
   path)     # print a worktree path (for agents: cd "$(tess path <feature> [repo])")
     feat="${1:-}"; repo="${2:-}"
@@ -298,19 +307,19 @@ case "$cmd" in
       dir="$TESS_WORKTREE_ROOT/$feat"
       if [ ! -d "$dir" ]; then
         echo "${B}creating worktree '$feat'…${R}"
-        worktree.sh "$feat" || exit 1
+        "$TESS_BIN/worktree.sh" "$feat" || exit 1
       fi
       echo "${D}opening $cmd in a new cmux workspace at $dir (hcom-coordinated)…${R}"
       # NO --run-here: let hcom open a fresh cmux workspace AT the feature dir,
       # so the sidebar labels it correctly (not the tab you launched from).
-      exec hcom "$cmd" --dir "$dir"
+      exec $HCOM "$cmd" --dir "$dir"
     fi
     # no feature -> stay in the current tab
-    exec hcom "$cmd" --run-here
+    exec $HCOM "$cmd" --run-here
     ;;
-  agents)   exec hcom ;;
-  loop)     exec bash "$HOME/.local/bin/_tess-loop.sh" "$@" ;;
-  resume|r) exec python3 "$HOME/.local/bin/_tess-resume.py" ;;
+  agents)   exec $HCOM ;;
+  loop)     exec bash "$TESS_BIN/_tess-loop.sh" "$@" ;;
+  resume|r) exec python3 "$TESS_BIN/_tess-resume.py" ;;
   local|offline)   # offline AI (no internet). `tess local [small|big] [prompt]`
     case "${1:-}" in
       small|med|medium|big) t="$1"; shift; _localrun "$t" "$@" ;;
@@ -352,7 +361,7 @@ case "$cmd" in
       elif [ "$max" -lt 100000 ]; then echo "${Y}⚠ low ceiling — run: tess fix-files${R}";
       else echo "${G}ok${R}"; fi
     fi
-    printf "  features:    "; wt ls 2>/dev/null | grep -c .
+    printf "  features:    "; "$TESS_BIN/wt" ls 2>/dev/null | grep -c .
     printf "  local model: "
     if command -v ollama >/dev/null 2>&1; then ollama list 2>/dev/null | awk 'NR==2{print $1" ("$3$4")"}' | grep . || echo "none pulled"; else echo "ollama not installed"; fi
     echo "  ${D}(disk size: run 'tess disk' — it's slow on big node_modules)${R}"
@@ -393,29 +402,29 @@ PL
   company)  if [ $# -gt 0 ]; then _newnote "Companies" "company" "$@"; else _show "$HUB/hub.md"; fi ;;
   add)      _add "$@" ;;
   log)      _log "$@" ;;
-  people)   python3 "$HOME/.local/bin/_tess-list.py" people ;;
-  companies|company-list) python3 "$HOME/.local/bin/_tess-list.py" companies ;;
-  reminders|todos|followups) python3 "$HOME/.local/bin/_tess-list.py" reminders ;;
+  people)   python3 "$TESS_BIN/_tess-list.py" people ;;
+  companies|company-list) python3 "$TESS_BIN/_tess-list.py" companies ;;
+  reminders|todos|followups) python3 "$TESS_BIN/_tess-list.py" reminders ;;
 
   # --- life (macOS: calendar / messages / calls) ---
-  calendar|cal) exec "$HOME/.local/bin/_tess-cal" "$@" ;;
-  messages|msg) python3 "$HOME/.local/bin/_tess-msg.py" "$@" ;;
-  chat|thread)  python3 "$HOME/.local/bin/_tess-chat.py" "$@" ;;
-  send|text)    exec bash "$HOME/.local/bin/_tess-send.sh" "$@" ;;
-  calls)        python3 "$HOME/.local/bin/_tess-calls.py" ;;
-  music)        exec python3 "$HOME/.local/bin/_tess-music.py" "$@" ;;
-  read|book)    exec python3 "$HOME/.local/bin/_tess-read.py" "$@" ;;
-  readpos)      python3 "$HOME/.local/bin/_tess-readpos.py" "$@" ;;
+  calendar|cal) exec "$TESS_BIN/_tess-cal" "$@" ;;
+  messages|msg) python3 "$TESS_BIN/_tess-msg.py" "$@" ;;
+  chat|thread)  python3 "$TESS_BIN/_tess-chat.py" "$@" ;;
+  send|text)    exec bash "$TESS_BIN/_tess-send.sh" "$@" ;;
+  calls)        python3 "$TESS_BIN/_tess-calls.py" ;;
+  music)        exec python3 "$TESS_BIN/_tess-music.py" "$@" ;;
+  read|book)    exec python3 "$TESS_BIN/_tess-read.py" "$@" ;;
+  readpos)      python3 "$TESS_BIN/_tess-readpos.py" "$@" ;;
 
-  ask)      exec python3 "$HOME/.local/bin/_tess-ask.py" "$@" ;;
+  ask)      exec python3 "$TESS_BIN/_tess-ask.py" "$@" ;;
   voice)
     echo "🎙  type or dictate (Wispr Flow) — Ctrl+C to stop."
     while printf "\n🎙  tess> " && read -r line; do
       [ -z "$line" ] && continue
-      python3 "$HOME/.local/bin/_tess-ask.py" $line
+      python3 "$TESS_BIN/_tess-ask.py" $line
     done
     ;;
-  listen)   exec bash "$HOME/.local/bin/_tess-listen.sh" ;;   # hands-free wake word
+  listen)   exec bash "$TESS_BIN/_tess-listen.sh" ;;   # hands-free wake word
 
   *)
     # user's custom commands live in ~/.config/tess/commands/ (never in the repo,
@@ -431,7 +440,7 @@ PL
     fi
     # a sentence/question -> voice router; a short name -> note lookup
     if [ $# -ge 3 ] || printf '%s %s' "$cmd" "$*" | grep -q '?'; then
-      exec python3 "$HOME/.local/bin/_tess-ask.py" "$cmd" "$@"
+      exec python3 "$TESS_BIN/_tess-ask.py" "$cmd" "$@"
     else
       _lookup "$cmd" "$@"
     fi
