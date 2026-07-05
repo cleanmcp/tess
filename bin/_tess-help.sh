@@ -12,6 +12,10 @@ case "$c" in
     "${D}e.g. tess new redis-cache${R}" ;;
   ls|list)   h "tess ls" "List your feature worktree folders." ;;
   rm|remove) h "tess rm <feature>" "Tear down a feature's worktrees (the clean way). Offers to delete the branch." ;;
+  done)      h "tess done <feature> [--dry-run] [--yes]" \
+    "One-shot teardown: kill the feature's agents (their panes close), remove its worktrees, sweep the folder." \
+    "Only agents working INSIDE that feature dir are touched. Warns about uncommitted changes." \
+    "${D}e.g. tess done redis-cache --dry-run${R}" ;;
   env)       h "tess env <feature>" "Re-copy .env files from the source repos into an existing feature worktree." ;;
   clean)     h "tess clean" "Prune stale worktree registrations (after you delete folders by hand)." ;;
   branches)  h "tess branches" "List branches already merged into \$TESS_MAIN_BRANCH and offer to delete them." ;;

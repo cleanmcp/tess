@@ -192,6 +192,18 @@ def inject(agent, text, timeout=180, retries=3, force=False, raw=False,
                         f"{retries} attempts — check `tess agents` / `hcom term {agent}`")
 
 
+def agents_under(path, agents=None):
+    """Agents whose working directory sits inside `path` (the feature dir).
+    Prefix-safe: 'foo' never matches an agent living in 'foo-bar'."""
+    path = os.path.abspath(path).rstrip("/") + "/"
+    out = []
+    for a in (list_agents() if agents is None else agents):
+        d = (a.get("directory") or "").rstrip("/") + "/"
+        if d.startswith(path):
+            out.append(a)
+    return out
+
+
 def press(agent, key):
     """Send a bare key: 'enter', 'esc', or literal text."""
     if key == "enter":
