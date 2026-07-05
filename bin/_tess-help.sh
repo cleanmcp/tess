@@ -29,6 +29,10 @@ case "$c" in
   listen)    h "tess listen" "Hands-free: say \"tess, <what you want>\". Uses whisper + local model. Ctrl+C to stop." ;;
   voice)     h "tess voice" "Type/dictate loop (pairs with Wispr Flow)." ;;
   agents)    h "tess agents" "Dashboard of running AI agents (hcom)." ;;
+  inject)    h "tess inject <agent> [--timeout N] [--retries N] [--force] -- <text>" \
+    "Reliably type a prompt into a running agent's terminal: waits until its input is READY, submits, then CONFIRMS the turn landed (retries if not). Raw 'hcom term inject' silently drops keys while an agent is busy — this never does." \
+    "Refuses if the agent is blocked on an approval dialog (use tess approve) or has a draft in its box (--force)." \
+    "${D}e.g. tess inject keto -- status report please${R}" ;;
   loop)      h "tess loop <claude|kimi> \"<goal>\" [max-rounds]" \
     "Autonomous manager->worker loop: a manager agent plays YOU, reviews the worker's last report, and issues the next instruction until the goal is DONE." \
     "Runs headless with tools + skipped permissions, in the current folder. Ctrl+C stops. Transcript saved to ~/.local/share/tess-loop/." \

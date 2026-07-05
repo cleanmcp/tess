@@ -351,6 +351,7 @@ case "$cmd" in
     exec $HCOM "$cmd" --run-here
     ;;
   agents)   exec $HCOM ;;
+  inject)   chmod +x "$TESS_BIN/_tess-inject.py" 2>/dev/null; exec python3 "$TESS_BIN/_tess-inject.py" "$@" ;;
   loop)     exec bash "$TESS_BIN/_tess-loop.sh" "$@" ;;
   resume|r) exec python3 "$TESS_BIN/_tess-resume.py" ;;
   local|offline)   # offline AI (no internet). `tess local [small|big] [prompt]`
