@@ -28,6 +28,7 @@ if [ -f "$HOME/.config/tess/config" ]; then
   while IFS='=' read -r _k _v; do [ -n "$_k" ] && eval "$_k=\$_v"; done <<< "$_pre"
 fi
 export TESS_VAULT TESS_HUB TESS_WORKTREE_ROOT TESS_CORE TESS_REPOS TESS_REPOS_ALL TESS_MAIN_BRANCH TESS_STARTUP_OPEN TESS_STARTUP_QUIT
+export TESS_NOTIFY_CONTACT="${TESS_NOTIFY_CONTACT:-}"   # phone pings (tess watch --phone)
 
 # helpers live next to THIS script (resolve the symlink) — so a repo checkout
 # runs its own helpers, and the installed copy keeps one consistent version.
@@ -352,6 +353,8 @@ case "$cmd" in
   digest)   exec python3 "$TESS_BIN/_tess-hq.py" digest "$@" ;;
   tell)     exec python3 "$TESS_BIN/_tess-comms.py" tell "$@" ;;
   inbox)    exec python3 "$TESS_BIN/_tess-comms.py" inbox "$@" ;;
+  wait)     exec python3 "$TESS_BIN/_tess-watch.py" wait "$@" ;;
+  watch)    exec python3 "$TESS_BIN/_tess-watch.py" watch "$@" ;;
   kill)
     tgt="${1:-}"; [ -z "$tgt" ] && { echo "usage: tess kill <agent|feature|tag:X|all>"; exit 1; }
     if [ -d "$TESS_WORKTREE_ROOT/$tgt" ]; then

@@ -41,6 +41,12 @@ case "$c" in
   tell)      h "tess tell <agent|feature|all> [--intent request|inform|ack] [--raw] -- <msg>" \
     "Speak as @bigboss. A FEATURE name messages all its agents; 'all' broadcasts." \
     "@words inside the message that collide with live agent names are invisibly escaped so nobody gets accidentally DM'd (emails/handles arrive intact). --raw disables that." ;;
+  wait)      h "tess wait <agent|feature|all> [--timeout N]" \
+    "Block until the target(s) stop working. Exit 0 = idle/finished, 2 = BLOCKED on approval, 3 = timeout, 4 = died." ;;
+  watch)     h "tess watch [on|off|status] [--phone] [--once] [--interval N]" \
+    "The escalation loop (F6): the MOMENT any agent goes BLOCKED / DIES / sits IDLE >20s it pings the lead —" \
+    "hcom DM to the lead identity (default @bigboss → shows in tess inbox; tess orchestrate registers its own lead agent) and, with --phone + TESS_NOTIFY_CONTACT in config, your iPhone via iMessage." \
+    "'on' runs it in the background (nohup), 'off' stops it, bare = foreground, --once = single scan (cron-able)." ;;
   inbox)     h "tess inbox [--all|--peek|--json]" \
     "Your unread mail as the lead: @bigboss mentions + agent reports (broadcasts), full text." \
     "Reading marks them read (cursor in ~/.config/tess/state). --peek doesn't; --all shows history." ;;
