@@ -6,7 +6,12 @@
 #   wt ls                     list existing feature worktrees in $TESS_WORKTREE_ROOT
 # Worktrees land at <worktree-root>/<feature>/<repo>.
 set -euo pipefail
-[ -f "$HOME/.config/tess/config" ] && . "$HOME/.config/tess/config"
+# config fills in what the environment didn't set — env always wins
+if [ -f "$HOME/.config/tess/config" ]; then
+  _pre="$(env | grep '^TESS_' || true)"
+  . "$HOME/.config/tess/config"
+  while IFS='=' read -r _k _v; do [ -n "$_k" ] && eval "$_k=\$_v"; done <<< "$_pre"
+fi
 
 WASH="${TESS_WORKTREE_ROOT:-$HOME/worktrees}"
 # prefer the worktree.sh sitting next to THIS script (works from a repo checkout too)

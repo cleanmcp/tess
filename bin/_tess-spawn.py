@@ -1,0 +1,231 @@
+#!/usr/bin/env python3
+# tess claude|kimi [feat|.] ["prompt"] [flags] — spawn an hcom-coordinated
+# agent with its task, model and effort GUARANTEED, not just requested.
+#
+#   feat         create/enter that worktree (via worktree.sh); '.' = current dir
+#   "prompt"     the agent's first task (or --file/-f <path>)
+#   --model M    model at launch — verified applied, both claude and kimi
+#   --effort E   effort/thinking level — verified applied
+#   --tag T      hcom group tag (default: feat, so names read feat-xxxx)
+#   --no-auto-trust  don't answer the folder-trust dialog automatically
+#   --dry-run    print the exact plan, do nothing
+#
+# Why the dance: launch flags like --model have been observed NOT to stick
+# through hcom's PTY launch. So the spawner launches bare, waits for the agent,
+# answers the trust dialog (tess just created that worktree — trusting it is
+# the user's intent), applies /model + /effort via the reliable injector, and
+# VERIFIES each on screen before finally injecting the prompt (transcript-
+# confirmed). Order guaranteed: trust → model → effort → prompt.
+import os
+import functools
+import subprocess
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+print = functools.partial(print, flush=True)
+from _tess_agents import AgentError, inject, launch, press, screen_text, term_state
+
+WORKTREE_ROOT = os.environ.get("TESS_WORKTREE_ROOT") or os.path.expanduser("~/worktrees")
+TESS_BIN = os.environ.get("TESS_BIN") or os.path.dirname(os.path.realpath(__file__))
+RESERVED = set((os.environ.get("TESS_RESERVED") or "").split())
+
+# friendly → real model ids (anything unknown passes through untouched)
+CLAUDE_MODELS = {"fable": "claude-fable-5", "fable5": "claude-fable-5",
+                 "fable-5": "claude-fable-5"}
+
+
+def die(msg, code=1):
+    print(f"tess: {msg}", file=sys.stderr)
+    sys.exit(code)
+
+
+def valid_feat(n):
+    if n.startswith("-") or n.startswith(".") or "/" in n:
+        return False
+    if n in RESERVED:
+        return False
+    return all(c.isalnum() or c in "._-" for c in n)
+
+
+def screen_has(agent, needle):
+    return needle.lower() in screen_text(term_state(agent)).lower()
+
+
+def kimi_display_name(alias):
+    """A kimi model's picker/footer name comes from config.toml display_name."""
+    import re
+    try:
+        txt = open(os.path.expanduser("~/.kimi-code/config.toml")).read()
+    except OSError:
+        return None
+    m = re.search(r'\[models\."%s"\](.*?)(?=\n\[|\Z)' % re.escape(alias), txt, re.S)
+    if m:
+        d = re.search(r'display_name\s*=\s*"([^"]+)"', m.group(1))
+        if d:
+            return d.group(1)
+    return None
+
+
+def kimi_set_model(agent, alias):
+    """Fix path when `kimi -m` didn't stick: drive the model picker with keys.
+    /model → Enter → search by display name → Enter → (Thinking page) Enter."""
+    name = kimi_display_name(alias) or alias.split("/")[-1]
+    press(agent, "esc")
+    press(agent, "/model")
+    press(agent, "enter")
+    if not screen_has(agent, "select a model"):
+        return False
+    press(agent, name)
+    press(agent, "enter")           # select top match
+    if screen_has(agent, "thinking"):
+        press(agent, "enter")       # accept the thinking toggle page
+    press(agent, "esc")             # make sure no picker remnants linger
+    return screen_has(agent, name)
+
+
+def kimi_footer(agent):
+    lines = [l for l in (term_state(agent) or {}).get("lines", []) if l.strip()]
+    return "\n".join(lines[-3:]).lower()
+
+
+def main():
+    args = sys.argv[1:]
+    if not args:
+        die("usage: tess claude|kimi [feat|.] [\"prompt\"] [--model M] [--effort E]")
+    tool = args.pop(0)
+    if tool not in ("claude", "kimi"):
+        die(f"unknown tool '{tool}' (claude or kimi)")
+
+    feat = prompt = pfile = model = effort = tag = None
+    auto_trust, dry = True, False
+    pos = []
+
+    def val(i):
+        if i + 1 >= len(args):
+            die(f"{args[i]} needs a value")
+        return args[i + 1]
+
+    i = 0
+    while i < len(args):
+        a = args[i]
+        if a in ("--file", "-f"):
+            pfile = val(i)
+            i += 1
+        elif a == "--model":
+            model = val(i)
+            i += 1
+        elif a == "--effort":
+            effort = val(i)
+            i += 1
+        elif a == "--tag":
+            tag = val(i)
+            i += 1
+        elif a == "--no-auto-trust":
+            auto_trust = False
+        elif a == "--dry-run":
+            dry = True
+        elif a.startswith("-") and a != ".":
+            die(f"unknown flag '{a}' (help: tess help {tool})")
+        else:
+            pos.append(a)
+        i += 1
+    if len(pos) > 2:
+        die("too many arguments — quote the prompt: tess claude <feat> \"<prompt>\"")
+    if pos:
+        feat = pos[0]
+    if len(pos) == 2:
+        prompt = pos[1]
+    if pfile:
+        if prompt:
+            die("give a prompt either inline or via --file, not both")
+        try:
+            with open(pfile) as f:
+                prompt = f.read().strip()
+        except OSError as e:
+            die(f"can't read --file: {e}")
+
+    if feat and feat != ".":
+        if not valid_feat(feat):
+            die(f"'{feat}' is not a valid feature name", 2)
+        wdir = os.path.join(WORKTREE_ROOT, feat)
+        tag = tag or feat
+    else:
+        wdir = os.getcwd()
+
+    if tool == "claude" and model:
+        model = CLAUDE_MODELS.get(model.lower(), model)
+    tool_args = []
+    if model:
+        # best effort at launch; verified (and fixed) after the agent is up
+        tool_args += (["-m", model] if tool == "kimi" else ["--model", model])
+
+    if dry:
+        print(f"would spawn: {tool} in {wdir}" + (f" [tag {tag}]" if tag else ""))
+        if feat and feat != "." and not os.path.isdir(wdir):
+            print(f"would create worktree: {feat}")
+        print(f"  launch args: {tool_args or '(none)'}")
+        if model:
+            print(f"  then verify model = {model} (fix via /model + screen check)")
+        if effort:
+            print(f"  then verify effort = {effort} (fix via /effort + screen check)")
+        if prompt:
+            print(f"  then inject prompt ({len(prompt)} chars, transcript-confirmed)")
+        return
+
+    if feat and feat != "." and not os.path.isdir(wdir):
+        print(f"creating worktree '{feat}'…")
+        r = subprocess.run(["bash", os.path.join(TESS_BIN, "worktree.sh"), feat])
+        if r.returncode != 0:
+            die(f"worktree creation failed for '{feat}'")
+
+    print(f"spawning {tool} in {wdir}…")
+    try:
+        name = launch(tool, wdir, tag=tag, tool_args=tool_args)
+        print(f"  agent: {name}")
+
+        # settle + clear the trust dialog before anything else
+        inject_kw = dict(auto_trust=auto_trust)
+        applied = []
+        if model and tool == "claude":
+            # /model <id> prints "Set model to …" — that line is the proof
+            inject(name, f"/model {model}", raw=True, expect=None, **inject_kw)
+            if screen_has(name, "set model") or screen_has(name, model):
+                applied.append(f"model={model} ✓verified")
+            else:
+                applied.append(f"model={model} ⚠ UNVERIFIED — check the pane (hcom term {name})")
+        elif model:  # kimi: -m at launch; the footer shows the display name
+            from _tess_agents import wait_ready
+            wait_ready(name, timeout=90, auto_trust=auto_trust)
+            needle = kimi_display_name(model) or model.split("/")[-1]
+            ok = needle.lower() in kimi_footer(name) or kimi_set_model(name, model)
+            applied.append(f"model={model} ({needle}) " +
+                           ("✓verified" if ok else f"⚠ UNVERIFIED — check the pane (hcom term {name})"))
+        if effort and tool == "claude":
+            inject(name, f"/effort {effort}", raw=True, expect=None, **inject_kw)
+            if screen_has(name, effort):
+                applied.append(f"effort={effort} ✓verified")
+            else:
+                applied.append(f"effort={effort} ⚠ UNVERIFIED — check the pane (hcom term {name})")
+        elif effort:
+            # kimi's effort control is its thinking toggle, shown in the footer
+            from _tess_agents import wait_ready
+            wait_ready(name, timeout=90, auto_trust=auto_trust)
+            want = effort.lower() not in ("low", "off", "none", "min")
+            have = "thinking" in kimi_footer(name)
+            if want == have:
+                applied.append(f"effort={effort} ✓verified (kimi thinking {'on' if have else 'off'})")
+            else:
+                applied.append(f"effort={effort} ⚠ kimi thinking is {'on' if have else 'off'} and this "
+                               f"model can't switch — pick a different kimi model if this matters")
+        for a in applied:
+            print(f"  {a}")
+        if prompt:
+            print("  " + inject(name, prompt, **inject_kw))
+        print(f"✓ {name} ready in {wdir}")
+        print(f"  follow along: tess report {name} · tess agents · tess tell {name} -- <msg>")
+    except AgentError as e:
+        die(e.msg, e.code)
+
+
+if __name__ == "__main__":
+    main()

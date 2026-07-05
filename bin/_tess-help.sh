@@ -18,8 +18,12 @@ case "$c" in
   path)      h "tess path <feature> [repo]" "Print a worktree's path — for agents: cd \"\$(tess path <feature> <repo>)\"." ;;
   wt)        h "tess wt" "Full git worktree status across all repos." ;;
 
-  claude|kimi) h "tess claude|kimi [feature]" \
-    "Launch the agent. With a feature name, create/enter that worktree first." "${D}e.g. tess kimi redis-cache${R}" ;;
+  claude|kimi) h "tess claude|kimi [feat|.] [\"prompt\"] [--model M] [--effort E] [--file f]" \
+    "Launch the agent. With a feature name, create/enter that worktree first ('.' = current dir, new pane)." \
+    "With a prompt/model/effort, the spawner VERIFIES each actually applied (trust dialog answered, /model + /effort confirmed on screen, prompt transcript-confirmed) before handing off." \
+    "--tag T groups names (default: feat) · --no-auto-trust · --dry-run shows the plan." \
+    "${D}e.g. tess kimi redis-cache \"profile the cache layer\" --model kimi-k2 --effort high${R}" \
+    "${D}     tess claude . \"fix the failing test\" --model fable5${R}" ;;
   resume|r)  h "tess resume" "Pick from ALL past Claude/Kimi sessions (any folder) by AI summary; resumes it in its folder." ;;
   think|partner) h "tess think" "Thinking-partner mode: loads your company context, sounding-board (not idea-firehose), researches in the background." ;;
   post|brand|write) h "tess post" "Daily content partner for your personal brand. Learns your taste each session." ;;

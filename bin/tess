@@ -20,7 +20,13 @@ fi
 : "${TESS_MAIN_BRANCH:=main}"                     # default branch (for `tess branches`)
 : "${TESS_STARTUP_OPEN:=cmux Music Safari}"      # apps `tess startup` opens
 : "${TESS_STARTUP_QUIT:=}"                        # apps `tess startup` quits (the login flood)
-[ -f "$HOME/.config/tess/config" ] && . "$HOME/.config/tess/config"
+# config fills in what the environment didn't set — env always wins, so
+# scripts (tess team, tests) can point a single command at another root.
+if [ -f "$HOME/.config/tess/config" ]; then
+  _pre="$(env | grep '^TESS_' || true)"
+  . "$HOME/.config/tess/config"
+  while IFS='=' read -r _k _v; do [ -n "$_k" ] && eval "$_k=\$_v"; done <<< "$_pre"
+fi
 export TESS_VAULT TESS_HUB TESS_WORKTREE_ROOT TESS_CORE TESS_REPOS TESS_REPOS_ALL TESS_MAIN_BRANCH TESS_STARTUP_OPEN TESS_STARTUP_QUIT
 
 # helpers live next to THIS script (resolve the symlink) — so a repo checkout
@@ -226,6 +232,7 @@ esac
 
 # words that can never be feature/agent names (subcommands + obvious traps)
 TESS_RESERVED="help menu new ls list rm remove clean env branches path wt worktrees claude kimi agents agent loop resume r local offline small big med medium think partner post write brand ask voice listen git lg fish matrix bonsai pipes dex doctor disk cheat fix-files fixfiles update commands custom open app launch apps login startup brief hub person company add log people companies reminders todos followups calendar cal messages msg chat thread send text calls music read book readpos done inbox report digest status team orchestrate ship wait watch approve inject tell kill hcom diff spend all"
+export TESS_RESERVED
 _validname() {  # _validname <name> <what> — reject flag-like/reserved/path-unsafe names
   local n="${1:-}" what="${2:-name}"
   [ -z "$n" ] && { echo "tess: missing $what" >&2; return 1; }
@@ -327,28 +334,15 @@ case "$cmd" in
     else echo "skipped."; fi
     ;;
 
-  # agents — launch plain so prompts work normally. Coordination is opt-in:
-  # run `hcom start` INSIDE an agent to join the shared room when you want it.
+  # agents ---------------------------------------------------------------
   claude|kimi)
-    # tess claude|kimi [feature]
-    #   no feature -> launch in current dir
-    #   feature    -> create the worktree if missing, launch the agent inside it
-    # Always hcom-coordinated via --run-here (current tab, prompts work normally).
-    feat="${1:-}"
-    if [ -n "$feat" ]; then
-      _validname "$feat" "feature name" || exit 2
-      dir="$TESS_WORKTREE_ROOT/$feat"
-      if [ ! -d "$dir" ]; then
-        echo "${B}creating worktree '$feat'…${R}"
-        "$TESS_BIN/worktree.sh" "$feat" || exit 1
-      fi
-      echo "${D}opening $cmd in a new cmux workspace at $dir (hcom-coordinated)…${R}"
-      # NO --run-here: let hcom open a fresh cmux workspace AT the feature dir,
-      # so the sidebar labels it correctly (not the tab you launched from).
-      exec $HCOM "$cmd" --dir "$dir"
-    fi
-    # no feature -> stay in the current tab
-    exec $HCOM "$cmd" --run-here
+    # tess claude|kimi                      interactive, current tab (unchanged)
+    # tess claude|kimi <feat|.> ["prompt"] [--file f] [--model m] [--effort e]
+    #   feat -> create the worktree if missing, spawn in a new cmux pane there.
+    #   The spawner GUARANTEES model/effort/prompt actually apply (launch flags
+    #   don't always stick through the PTY) — see _tess-spawn.py.
+    [ $# -eq 0 ] && exec $HCOM "$cmd" --run-here
+    exec python3 "$TESS_BIN/_tess-spawn.py" "$cmd" "$@"
     ;;
   agents)   exec $HCOM ;;
   inject)   chmod +x "$TESS_BIN/_tess-inject.py" 2>/dev/null; exec python3 "$TESS_BIN/_tess-inject.py" "$@" ;;

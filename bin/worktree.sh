@@ -17,7 +17,12 @@
 # Worktrees land at:  <worktree-root>/<feature-name>/<repo>
 #
 set -euo pipefail
-[ -f "$HOME/.config/tess/config" ] && . "$HOME/.config/tess/config"
+# config fills in what the environment didn't set — env always wins
+if [ -f "$HOME/.config/tess/config" ]; then
+  _pre="$(env | grep '^TESS_' || true)"
+  . "$HOME/.config/tess/config"
+  while IFS='=' read -r _k _v; do [ -n "$_k" ] && eval "$_k=\$_v"; done <<< "$_pre"
+fi
 
 # --- config ------------------------------------------------------------------
 WORKTREE_PARENT="${TESS_WORKTREE_ROOT:-$HOME/worktrees}"
