@@ -345,7 +345,12 @@ case "$cmd" in
     [ $# -eq 0 ] && exec $HCOM "$cmd" --run-here
     exec python3 "$TESS_BIN/_tess-spawn.py" "$cmd" "$@"
     ;;
-  agents)   exec $HCOM ;;
+  agents)   # bare = live hcom dashboard; --json = machine-readable fleet state
+    case "${1:-}" in --json) exec python3 "$TESS_BIN/_tess-hq.py" status --json ;; esac
+    exec $HCOM ;;
+  status)   exec python3 "$TESS_BIN/_tess-hq.py" status "$@" ;;
+  diff)     exec python3 "$TESS_BIN/_tess-hq.py" diff "$@" ;;
+  approve)  exec python3 "$TESS_BIN/_tess-hq.py" approve "$@" ;;
   inject)   chmod +x "$TESS_BIN/_tess-inject.py" 2>/dev/null; exec python3 "$TESS_BIN/_tess-inject.py" "$@" ;;
   done)     _validname "${1:-}" "feature name" || exit 2; exec python3 "$TESS_BIN/_tess-done.py" "$@" ;;
   hcom)     exec $HCOM "$@" ;;   # full hcom under tess: tess hcom <anything>
