@@ -30,6 +30,7 @@ case "${1:-ls}" in
     find "$WASH" -mindepth 1 -maxdepth 1 -type d ! -name "$(basename "${TESS_CORE:-repos}")" -print0 |
     while IFS= read -r -d '' f; do
       feat="$(basename "$f")"; live=""
+      [ -e "$f/.git" ] && live="self"   # the dir itself is a checkout/worktree
       for sub in "$f"/*/; do
         [ -e "${sub%/}/.git" ] && live="${live:+$live }$(basename "$sub")"
       done
@@ -52,6 +53,7 @@ case "${1:-ls}" in
     find "$WASH" -mindepth 1 -maxdepth 1 -type d ! -name "$(basename "${TESS_CORE:-repos}")" -print0 |
     while IFS= read -r -d '' f; do
       live=0
+      [ -e "$f/.git" ] && live=1        # the dir itself is a checkout/worktree
       for sub in "$f"/*/; do [ -e "${sub%/}/.git" ] && { live=1; break; }; done
       [ "$live" = 1 ] && continue
       leftovers="$(ls -A "$f" 2>/dev/null | grep -vx 'AGENTS.md' | grep -vx 'CLAUDE.md' || true)"

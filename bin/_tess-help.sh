@@ -25,7 +25,7 @@ case "$c" in
   claude|kimi) h "tess claude|kimi [feat|.] [\"prompt\"] [--model M] [--effort E] [--file f]" \
     "Launch the agent. With a feature name, create/enter that worktree first ('.' = current dir, new pane)." \
     "With a prompt/model/effort, the spawner VERIFIES each actually applied (trust dialog answered, /model + /effort confirmed on screen, prompt transcript-confirmed) before handing off." \
-    "Roles are ENFORCED, not suggested: --readonly (plan mode) · deploy commands denied unless --can-deploy · --budget N caps spend in USD." \
+    "Roles are ENFORCED, not suggested: --readonly (plan mode) · --auto (starts IN auto permission mode — no per-command prompts, footer-verified) · deploy commands denied unless --can-deploy · --budget N caps spend in USD." \
     "--tag T groups names (default: feat) · --no-auto-trust · --dry-run shows the plan." \
     "${D}e.g. tess kimi redis-cache \"profile the cache layer\" --model kimi-k2 --effort high${R}" \
     "${D}     tess claude . \"fix the failing test\" --model fable5${R}" ;;

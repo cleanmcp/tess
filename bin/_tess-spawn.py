@@ -7,6 +7,9 @@
 #   --model M    model at launch — verified applied, both claude and kimi
 #   --effort E   effort/thinking level — verified applied
 #   --tag T      hcom group tag (default: feat, so names read feat-xxxx)
+#   --auto       start ALREADY in auto permission mode (no per-command
+#                approval prompts; claude: --permission-mode auto, kimi:
+#                --auto) — verified on the running agent's footer
 #   --readonly   ENFORCED read-only role (claude: --permission-mode plan,
 #                kimi: --plan) — not just prompt text
 #   --can-deploy allow deploy commands (default: a curated deny-list of
@@ -126,7 +129,7 @@ def main():
 
     feat = prompt = pfile = model = effort = tag = budget = None
     auto_trust, dry = True, False
-    readonly = can_deploy = False
+    readonly = can_deploy = auto_mode = False
     pos = []
 
     def val(i):
@@ -152,6 +155,8 @@ def main():
         elif a == "--budget":
             budget = val(i)
             i += 1
+        elif a in ("--auto", "--auto-mode"):
+            auto_mode = True
         elif a == "--readonly":
             readonly = True
         elif a == "--can-deploy":
@@ -195,11 +200,16 @@ def main():
     if model:
         # best effort at launch; verified (and fixed) after the agent is up
         tool_args += (["-m", model] if tool == "kimi" else ["--model", model])
+    if readonly and auto_mode:
+        die("--readonly and --auto contradict each other — pick one")
     if readonly:
         # ENFORCED by the tool's own permission system, not prompt text
         tool_args += ["--plan"] if tool == "kimi" else ["--permission-mode", "plan"]
         roles.append("readonly (enforced: " + ("kimi --plan" if tool == "kimi"
                      else "claude --permission-mode plan") + ")")
+    if auto_mode:
+        tool_args += ["--auto"] if tool == "kimi" else ["--permission-mode", "auto"]
+        roles.append("auto mode (no per-command approval prompts; verified on footer)")
     if budget:
         if tool == "claude":
             tool_args += ["--max-budget-usd", str(budget)]
@@ -260,6 +270,14 @@ def main():
             ok = needle.lower() in kimi_footer(name) or kimi_set_model(name, model)
             applied.append(f"model={model} ({needle}) " +
                            ("✓verified" if ok else f"⚠ UNVERIFIED — check the pane (hcom term {name})"))
+        if auto_mode:
+            # proof, not hope: the running agent's footer must say auto mode
+            from _tess_agents import wait_ready
+            wait_ready(name, timeout=90, auto_trust=auto_trust)
+            if "auto" in kimi_footer(name):
+                applied.append("auto mode ✓verified (footer)")
+            else:
+                applied.append(f"auto mode ⚠ UNVERIFIED — check the pane (hcom term {name})")
         if effort and tool == "claude":
             inject(name, f"/effort {effort}", raw=True, expect=None, **inject_kw)
             if screen_has(name, effort):

@@ -65,7 +65,7 @@ tess think | post            thinking-partner / content-partner modes
 tess local | small | big     offline local models (ollama)
 tess ask "<q>" | tess voice | tess listen    natural-language + hands-free voice
 ```
-`--readonly` is enforced (plan mode), deploy commands are denied unless `--can-deploy`, and `--budget N` is a hard USD cap. Every `--help` is safe — it never creates worktrees or spawns anything.
+`--readonly` is enforced (plan mode), `--auto` starts straight in auto permission mode (no per-command approval prompts — footer-verified), deploy commands are denied unless `--can-deploy`, and `--budget N` is a hard USD cap. Every `--help` is safe — it never creates worktrees or spawns anything.
 
 ### 🚁 The fleet — many agents at once (you are `@bigboss`)
 One tool drives the whole fleet; hcom is folded underneath (`tess hcom <anything>` for the rest).

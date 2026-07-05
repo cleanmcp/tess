@@ -99,6 +99,8 @@ def main():
                     cmd += [flag, str(cfg[k])]
             if cfg.get("readonly"):
                 cmd.append("--readonly")
+            if cfg.get("auto"):
+                cmd.append("--auto")
             if cfg.get("can_deploy") or cfg.get("can-deploy"):
                 cmd.append("--can-deploy")
             if dry:
