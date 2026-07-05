@@ -59,17 +59,34 @@ cat <<EOF
      ${C}tess wt${R}             worktree status across repos
 
   ${B}${G}🤖 AI AGENTS${R}
+     ${C}tess claude${R} ${D}[feat] ["task"] [--model M --effort E]${R}  spawn Claude — worktree auto-created, settings VERIFIED
+     ${C}tess kimi${R} ${D}[feat] ["task"] …${R}   same for Kimi (own models + thinking level)
      ${C}tess think${R}          thinking partner — company brain, researches while you talk
      ${C}tess post${R}           daily content partner — your voice, learns your taste
-     ${C}tess claude${R} ${D}[feat]${R}  launch Claude — in worktree <feat> if named
-     ${C}tess kimi${R} ${D}[feat]${R}    launch Kimi — in worktree <feat> if named
      ${C}tess resume${R}         resume ANY past Claude/Kimi session (any folder)
      ${C}tess local${R} ${D}[prompt]${R}  offline AI — no internet (also ${C}tess small${R} / ${C}tess big${R})
      ${C}tess ask${R} ${D}"<q>"${R}      ask in words — routes to the right thing + speaks it
      ${C}tess listen${R}         hands-free — just say "tess, <what you want>"
      ${C}tess voice${R}          type/dictate loop (Wispr Flow)
-     ${C}tess agents${R}         dashboard of all running agents (hcom)
      ${C}tess loop${R} ${D}<claude|kimi> "<goal>"${R}  autonomous — it drives itself till done
+
+  ${B}${G}🚁 THE FLEET${R} ${D}(drive MANY agents at once — you are @bigboss)${R}
+     ${C}tess team${R} ${D}<spec.yaml>${R}   fan out N agents in one shot (prompts/models/roles) ${D}--dry-run first${R}
+     ${C}tess orchestrate${R} ${D}"<goal>"${R}  hire an AI lead to run the fleet for you
+     ${C}tess status${R}         fleet at a glance — BLOCKED agents first  ${D}(--json for scripts)${R}
+     ${C}tess digest${R}         everyone's last report, merged
+     ${C}tess report${R} ${D}<agent>${R}  one agent's FULL last message
+     ${C}tess inbox${R}          your unread mail from the fleet
+     ${C}tess tell${R} ${D}<agent|feat|all> -- <msg>${R}  speak as @bigboss (safe @-escaping)
+     ${C}tess wait${R} ${D}<feat|all>${R}   block until done — exit 2 = someone needs approval
+     ${C}tess watch on${R} ${D}[--phone]${R}  escalations: BLOCKED/IDLE/DIED agents ping the lead (or your iPhone)
+     ${C}tess approve${R} ${D}<agent>${R}  answer a blocked agent's approval dialog
+     ${C}tess inject${R} ${D}<agent> -- <text>${R}  force a prompt into its terminal (waits + confirms)
+     ${C}tess diff${R} ${D}<agent|feat>${R}  what they actually changed
+     ${C}tess ship${R} ${D}<feat>${R}       diff → tests → push → PR  ${D}(--merge)${R}
+     ${C}tess done${R} ${D}<feat>${R}       kill agents + panes + worktrees, all at once
+     ${C}tess spend${R}          budget ledger (--budget caps are enforced)
+     ${C}tess agents${R}         live dashboard · ${C}tess kill${R} ${D}<agent|feat>${R} · ${C}tess hcom${R} ${D}<anything>${R}
 
   ${B}${G}⚡ TOOLS${R}
      ${C}tess git${R}            visual git — branches/commits (lazygit)

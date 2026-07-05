@@ -14,3 +14,9 @@ TESS_REPOS_ALL="app api web"                 # repos incl. optional ones (used b
 # ── Startup (optional; for `tess startup`) ──
 TESS_STARTUP_OPEN="cmux Music Safari"        # apps to open at login
 TESS_STARTUP_QUIT=""                         # apps to quit at login (the flood, space-separated)
+
+# ── Fleet (optional; for tess team/watch/ship) ──
+# TESS_NOTIFY_CONTACT="Your Name"            # who `tess watch --phone` iMessages (contact name or number)
+# TESS_TEST_CMD="npm test"                   # run in each repo before `tess ship` pushes
+# TESS_IDLE_STABLE_SECS=20                   # how long an agent sits idle before escalation
+# TESS_DEPLOY_DENY="Bash(gcloud run deploy:*),Bash(terraform apply:*)"  # override the deploy deny-list

@@ -12,6 +12,13 @@
 - `tess <name>` read a note · `tess people`/`companies`/`reminders` · `tess brief` (what's going on)
 - `tess add <name> -- <text>` · `tess person <name> -- <desc>` · `tess log -- <text>`
 
+**The fleet (driving other agents — tess wraps hcom; never call hcom directly except via `tess hcom`):**
+- Spawn: `tess claude|kimi <feat> "<task>" [--model M --effort E --readonly --budget N]` — worktree auto-created, settings verified. Fan out many: `tess team <spec.yaml>` (use `--dry-run` first). A full AI lead: `tess orchestrate "<goal>"`.
+- Monitor: `tess status` (BLOCKED first) · `tess digest` · `tess report <agent>` · `tess diff <agent|feat>` · `tess wait <feat|all>` (exit 2 = approval needed).
+- Steer: `tess tell <agent|feat|all> -- <msg>` (safe @-escaping) · `tess inject <agent> -- <text>` (forces a turn, confirms it landed) · `tess approve <agent>` (blocked dialogs).
+- The human is **@bigboss**: report results with `uvx hcom send --intent inform -- "@bigboss <report>"`; their mail shows in `tess inbox`. Escalations (blocked/idle/died) are automatic via `tess watch`.
+- Finish: `tess ship <feat>` (tests → push → PR) then `tess done <feat> --yes` (never tear down features you don't own).
+
 **Comms (local):** `tess messages [who]`, `tess chat <name|group>`, `tess calls`, `tess calendar`.
 - `tess send "<full name or number>" -- "<message>"` — pass full name + message inline (ambiguous names error with options; never guess). ALWAYS confirm with the user before sending on their behalf.
 

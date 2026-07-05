@@ -24,8 +24,9 @@ say "› scaffolding config in ~/.config/tess"
 mkdir -p "$HOME/.config/tess"
 [ -f "$HOME/.config/tess/config" ] || { cp "$HERE/config.example" "$HOME/.config/tess/config"; echo "  created ~/.config/tess/config — edit it to set your vault + repos"; }
 [ -f "$HOME/.config/tess/models" ] || printf 'small=llama3.2:1b\nmed=llama3.2:3b\nbig=qwen2.5:7b\n' > "$HOME/.config/tess/models"
-mkdir -p "$HOME/.config/tess/commands"
+mkdir -p "$HOME/.config/tess/commands" "$HOME/.config/tess/templates" "$HOME/.config/tess/state"
 [ -f "$HOME/.config/tess/commands/README" ] || echo "Put executable scripts here named '<name>'. Run them as 'tess <name>'. They survive 'git pull' — the repo never touches this folder." > "$HOME/.config/tess/commands/README"
+[ -f "$HOME/.config/tess/templates/README" ] || echo "Role templates for 'tess team' (yourname.md -> template: yourname). These override the built-ins in <repo>/templates/." > "$HOME/.config/tess/templates/README"
 
 say "› teaching your AI agents about tess"
 _inject_primer() {   # append the primer to an agent instructions file (idempotent)

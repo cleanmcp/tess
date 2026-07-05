@@ -58,13 +58,35 @@ tess ls | rm | env | clean | branches
 
 ### 🤖 AI agents
 ```
-tess claude [feature]        launch Claude Code (in a worktree if named)
-tess kimi [feature]          launch Kimi
+tess claude [feat] ["task"] [--model M --effort E]   spawn Claude in a worktree, task + settings VERIFIED applied
+tess kimi   [feat] ["task"] [--model M --effort E]   same for Kimi (own models + thinking level)
 tess resume                  resume ANY past Claude/Kimi session (any folder)
 tess think | post            thinking-partner / content-partner modes
 tess local | small | big     offline local models (ollama)
 tess ask "<q>" | tess voice | tess listen    natural-language + hands-free voice
-tess agents                  multi-agent dashboard (hcom, if installed)
+```
+`--readonly` is enforced (plan mode), deploy commands are denied unless `--can-deploy`, and `--budget N` is a hard USD cap. Every `--help` is safe — it never creates worktrees or spawns anything.
+
+### 🚁 The fleet — many agents at once (you are `@bigboss`)
+One tool drives the whole fleet; hcom is folded underneath (`tess hcom <anything>` for the rest).
+```
+tess team fleet.yaml         fan out N agents: per-agent worktree, prompt, model, effort,
+                             role template (investigate/implement/review), count — --dry-run first
+tess orchestrate "<goal>"    hire an AI lead: it decomposes, spawns, monitors, unblocks,
+                             synthesizes, reports to you ('off' takes command back)
+tess status | digest         fleet table (BLOCKED first) | everyone's last report, merged
+tess report <agent>          one agent's FULL last message (scriptable)
+tess inbox                   your unread mail from the fleet (cursor-tracked)
+tess tell <agent|feat|all> -- <msg>   speak as @bigboss (agent-name @s in bodies auto-escaped)
+tess wait <feat|all>         block until done — exit 2 means someone needs approval
+tess watch on [--phone]      escalation daemon: BLOCKED / IDLE / DIED agents instantly ping
+                             the lead's inbox — and your iPhone (TESS_NOTIFY_CONTACT)
+tess approve <agent>         answer a blocked agent's approval dialog (shows it first)
+tess inject <agent> -- <t>   force a prompt into its terminal — waits till ready, confirms it landed
+tess diff <agent|feat>       what they actually changed (per-worktree diffstat)
+tess ship <feat> [--merge]   diff → tests (TESS_TEST_CMD) → push → PR → optional squash-merge
+tess done <feat>             one-shot teardown: kill its agents + panes + worktrees
+tess spend                   budget ledger (spawn-time caps are enforced)
 ```
 
 ### 📱 Life (macOS, local, read-only unless you send)
