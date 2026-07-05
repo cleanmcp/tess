@@ -38,6 +38,19 @@ if [ "${1:-}" = "--all" ] || [ "${1:-}" = "--web" ]; then
   read -r -a _opt <<< "${TESS_REPOS_ALL:-${TESS_REPOS:-}}"; REPOS=("${_opt[@]}"); shift
 fi
 
+usage() { sed -n '3,18p' "$0" | sed 's/^# \{0,1\}//'; }
+case "${1:-}" in -h|--help) usage; exit 0 ;; esac
+
+# a feature name must never be a flag (--help once created a junk worktree) or
+# anything path-unsafe — this script is also called directly, so guard here too.
+check_name() {
+  case "${1:-}" in
+    ""  ) return 0 ;;  # caller handles its own "missing name" usage error
+    -*  ) c_red "refusing feature name '$1' — looks like a flag. (help: $0 --help)"; exit 2 ;;
+    .*|*/*|*[!A-Za-z0-9._-]*) c_red "refusing feature name '$1' — letters, digits, . _ - only"; exit 2 ;;
+  esac
+}
+
 # --- helpers -----------------------------------------------------------------
 c_blue()  { printf "\033[34m%s\033[0m\n" "$*"; }
 c_green() { printf "\033[32m%s\033[0m\n" "$*"; }
@@ -68,6 +81,7 @@ copy_env_files() {
 if [ "${1:-}" = "rm" ]; then
   FEATURE="${2:-}"
   [ -z "$FEATURE" ] && { c_red "usage: $0 rm <feature-name>"; exit 1; }
+  check_name "$FEATURE"
   DEST_ROOT="$WORKTREE_PARENT/$FEATURE"
   c_blue "Removing worktrees for feature '$FEATURE'"
   for repo in "${REPOS[@]}"; do
@@ -88,6 +102,7 @@ fi
 FEATURE="${1:-}"
 BASE="${2:-$DEFAULT_BASE}"   # base branch to cut from (default: main)
 [ -z "$FEATURE" ] && { c_red "usage: $0 <feature-name> [base-branch]"; exit 1; }
+check_name "$FEATURE"
 
 DEST_ROOT="$WORKTREE_PARENT/$FEATURE"
 mkdir -p "$DEST_ROOT"

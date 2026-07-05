@@ -211,6 +211,34 @@ _localrun() {
 
 cmd="${1:-menu}"; shift 2>/dev/null || true
 
+# ---- safety rails (B1) ------------------------------------------------------
+# A help flag must NEVER create a worktree or spawn an agent. Any -h/--help
+# after a subcommand shows that subcommand's help and exits — before anything
+# else runs. (`--` ends the scan so message text can mention --help; the hcom
+# passthrough is exempt so `tess hcom send --help` shows hcom's own help.)
+case "$cmd" in
+  hcom) ;;
+  *) for _a in "$@"; do case "$_a" in
+       -h|--help) exec bash "$TESS_BIN/_tess-help.sh" "$cmd" ;;
+       --) break ;;
+     esac; done ;;
+esac
+
+# words that can never be feature/agent names (subcommands + obvious traps)
+TESS_RESERVED="help menu new ls list rm remove clean env branches path wt worktrees claude kimi agents agent loop resume r local offline small big med medium think partner post write brand ask voice listen git lg fish matrix bonsai pipes dex doctor disk cheat fix-files fixfiles update commands custom open app launch apps login startup brief hub person company add log people companies reminders todos followups calendar cal messages msg chat thread send text calls music read book readpos done inbox report digest status team orchestrate ship wait watch approve inject tell kill hcom diff spend all"
+_validname() {  # _validname <name> <what> — reject flag-like/reserved/path-unsafe names
+  local n="${1:-}" what="${2:-name}"
+  [ -z "$n" ] && { echo "tess: missing $what" >&2; return 1; }
+  case "$n" in
+    -*) echo "tess: '$n' looks like a flag, not a $what. (want help? tess help $cmd)" >&2; return 1 ;;
+    .*|*/*|*[!A-Za-z0-9._-]*) echo "tess: '$n' is not a safe $what (letters, digits, . _ - only)" >&2; return 1 ;;
+  esac
+  case " $TESS_RESERVED " in
+    *" $n "*) echo "tess: '$n' is a reserved tess word — pick another $what" >&2; return 1 ;;
+  esac
+  return 0
+}
+
 case "$cmd" in
   menu|""|-h|--help) menu ;;
   help) if [ $# -gt 0 ]; then exec bash "$TESS_BIN/_tess-help.sh" "$@"; else menu; fi ;;
@@ -240,14 +268,17 @@ case "$cmd" in
   startup)  exec bash "$TESS_BIN/_tess-apps.sh" startup "$@" ;;
 
   # worktrees ---------------------------------------------------------------
-  new)      "$TESS_BIN/wt" "$@" ;;           # wt prompts for a name if none given
+  new)      # validate the feature name (first non-flag arg); base branch is untouched
+    for _a in "$@"; do case "$_a" in --all|--web) ;; *) _validname "$_a" "feature name" || exit 2; break ;; esac; done
+    "$TESS_BIN/wt" "$@" ;;
   ls|list)  echo "${B}Your features:${R}"; "$TESS_BIN/wt" ls ;;
-  rm)       "$TESS_BIN/wt" rm "$@" ;;
+  rm)       _validname "${1:-}" "feature name" || exit 2; "$TESS_BIN/wt" rm "$@" ;;
   clean)    "$TESS_BIN/wt" prune ;;
 
   path)     # print a worktree path (for agents: cd "$(tess path <feature> [repo])")
     feat="${1:-}"; repo="${2:-}"
     [ -z "$feat" ] && { echo "usage: tess path <feature> [repo]" >&2; exit 1; }
+    _validname "$feat" "feature name" || exit 2
     p="$TESS_WORKTREE_ROOT/$feat"; [ -n "$repo" ] && p="$p/$repo"
     [ -e "$p" ] && echo "$p" || { echo "not found: $p" >&2; exit 1; }
     ;;
@@ -261,6 +292,7 @@ case "$cmd" in
 
   env)
     feat="${1:-}"; [ -z "$feat" ] && { echo "usage: tess env <feature>"; exit 1; }
+    _validname "$feat" "feature name" || exit 2
     core="$TESS_CORE"
     [ -d "$TESS_WORKTREE_ROOT/$feat" ] || { echo "no feature '$feat' (see: tess ls)"; exit 1; }
     echo "${B}refreshing env for '$feat'${R}"
@@ -304,6 +336,7 @@ case "$cmd" in
     # Always hcom-coordinated via --run-here (current tab, prompts work normally).
     feat="${1:-}"
     if [ -n "$feat" ]; then
+      _validname "$feat" "feature name" || exit 2
       dir="$TESS_WORKTREE_ROOT/$feat"
       if [ ! -d "$dir" ]; then
         echo "${B}creating worktree '$feat'…${R}"

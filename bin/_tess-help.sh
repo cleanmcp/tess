@@ -66,6 +66,7 @@ case "$c" in
   update)    h "tess update" "Pull the latest tess now. (It also auto-pulls in the background on any command.)" ;;
   cheat)     h "tess cheat" "Open the full cheatsheet." ;;
 
+  help) h "tess help <command>" "Detailed help for one command. Every subcommand also takes --help/-h directly (always safe — never creates or spawns anything)." ;;
   "" ) echo "usage: tess help <command>   (or just 'tess' for the full menu)" ;;
   * ) echo "no help for '$c'. Run 'tess' for the full list, or 'tess help <command>'." ;;
 esac

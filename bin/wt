@@ -16,6 +16,9 @@ SCRIPT="$(cd "$(dirname "$_src")" && pwd)/worktree.sh"
 [ -x "$SCRIPT" ] || { echo "wt: worktree.sh not found/executable" >&2; exit 1; }
 
 case "${1:-ls}" in
+  -h|--help)
+    sed -n '2,7p' "$0" | sed 's/^# \{0,1\}//'; exit 0
+    ;;
   ls|list|"")
     # show feature dirs (everything in $TESS_WORKTREE_ROOT that isn't the core/repo plumbing)
     find "$WASH" -mindepth 1 -maxdepth 1 -type d ! -name "$(basename "${TESS_CORE:-repos}")" -exec basename {} \; | sort
