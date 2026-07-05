@@ -38,6 +38,11 @@ case "$c" in
   voice)     h "tess voice" "Type/dictate loop (pairs with Wispr Flow)." ;;
   agents)    h "tess agents" "Dashboard of running AI agents (hcom)." ;;
   hcom)      h "tess hcom <anything>" "Full hcom CLI under tess — e.g. tess hcom list -v · tess hcom events --last 5. You never need to install or call hcom directly." ;;
+  report)    h "tess report <agent> [--n N] [--json]" \
+    "The agent's FULL last message (no truncation), plain text — scriptable. --n 3 for the last 3 exchanges." ;;
+  digest)    h "tess digest [--json]" \
+    "One merged summary of every running agent: state, worktree, current task, last report snippet." \
+    "${D}the lead's 10-second fleet overview — pair with tess report <agent> to zoom in${R}" ;;
   kill)      h "tess kill <agent|feature|tag:X|all>" \
     "Kill an agent (closes its pane). A FEATURE name kills only that feature's agents and keeps the worktree (full teardown: tess done)." ;;
   inject)    h "tess inject <agent> [--timeout N] [--retries N] [--force] -- <text>" \

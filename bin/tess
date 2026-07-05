@@ -348,6 +348,8 @@ case "$cmd" in
   inject)   chmod +x "$TESS_BIN/_tess-inject.py" 2>/dev/null; exec python3 "$TESS_BIN/_tess-inject.py" "$@" ;;
   done)     _validname "${1:-}" "feature name" || exit 2; exec python3 "$TESS_BIN/_tess-done.py" "$@" ;;
   hcom)     exec $HCOM "$@" ;;   # full hcom under tess: tess hcom <anything>
+  report)   exec python3 "$TESS_BIN/_tess-hq.py" report "$@" ;;
+  digest)   exec python3 "$TESS_BIN/_tess-hq.py" digest "$@" ;;
   kill)
     tgt="${1:-}"; [ -z "$tgt" ] && { echo "usage: tess kill <agent|feature|tag:X|all>"; exit 1; }
     if [ -d "$TESS_WORKTREE_ROOT/$tgt" ]; then
