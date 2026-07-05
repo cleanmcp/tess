@@ -47,6 +47,11 @@ case "$c" in
   tell)      h "tess tell <agent|feature|all> [--intent request|inform|ack] [--raw] -- <msg>" \
     "Speak as @bigboss. A FEATURE name messages all its agents; 'all' broadcasts." \
     "@words inside the message that collide with live agent names are invisibly escaped so nobody gets accidentally DM'd (emails/handles arrive intact). --raw disables that." ;;
+  team)      h "tess team <spec.yaml|-> [--dry-run] [--parallel]" \
+    "Fan out a whole fleet in one command: each agent gets its own worktree, prompt, model, effort and role template (defaults + per-agent overrides in the YAML)." \
+    "Templates: investigate / implement / review (built-in) + your own in ~/.config/tess/templates/. count: N clones an agent." \
+    "Every spawn is VERIFIED (trust answered, model+effort confirmed, prompt landed). --dry-run prints the exact plan." \
+    "${D}e.g. tess team fleet.yaml --dry-run   ·   cat spec.yaml | tess team -${R}" ;;
   wait)      h "tess wait <agent|feature|all> [--timeout N]" \
     "Block until the target(s) stop working. Exit 0 = idle/finished, 2 = BLOCKED on approval, 3 = timeout, 4 = died." ;;
   watch)     h "tess watch [on|off|status] [--phone] [--once] [--interval N]" \
