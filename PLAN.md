@@ -60,6 +60,17 @@ Also add `_hcom()` = `hcom` if on PATH else `uvx hcom` (tess already assumes bar
   listening/blocked/dead, exit code reflects state. `tess watch [--phone]` — background loop
   (nohup) that iMessages the user (via `_tess-send.sh`, `TESS_NOTIFY_CONTACT` in config) on
   FINISHED / IDLE / BLOCKED transitions. `tess watch off` stops it.
+- **F6 escalation to the lead (first-class, user-added)**: any agent that NEEDS INPUT —
+  blocked on approval (`■`), asking a question, or idle mid-task — escalates IMMEDIATELY to
+  the orchestrating lead, human or AI. Implementation: the `tess watch` loop detects
+  active→blocked and active→listening transitions from `hcom list --json` polling (hcom
+  `events sub` delivers only to hcom agents, so the watcher ALSO forwards each escalation as
+  (a) an hcom message @-mentioning the lead agent when one is registered — the AI-orchestrator
+  path, delivered instantly into its conversation — and (b) a `tess inbox` entry for the human
+  lead, and (c) optional phone push. Lead identity comes from
+  `~/.config/tess/state/lead` (set by `tess orchestrate`, default `bigboss`).
+  Acceptance: spawn a scratch agent, force a blocked/idle state, confirm the escalation
+  message reaches the lead's inbox (and lead agent's hcom feed) within seconds.
 - **F4 monitoring**: `tess status` (rich table: agent, task, state incl. BLOCKED, last
   activity, worktree, unread) + `tess agents --json` (machine). `tess diff <agent|feat>` =
   per-worktree `git diff --stat` of files touched. `tess approve <agent>` = reliable-inject
