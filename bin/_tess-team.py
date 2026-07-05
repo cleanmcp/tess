@@ -93,9 +93,14 @@ def main():
         count = int(cfg.get("count", 1))
         for _ in range(count):
             cmd = ["python3", os.path.join(TESS_BIN, "_tess-spawn.py"), tool, str(feat), full]
-            for k, flag in (("model", "--model"), ("effort", "--effort"), ("tag", "--tag")):
+            for k, flag in (("model", "--model"), ("effort", "--effort"),
+                            ("tag", "--tag"), ("budget", "--budget")):
                 if cfg.get(k):
                     cmd += [flag, str(cfg[k])]
+            if cfg.get("readonly"):
+                cmd.append("--readonly")
+            if cfg.get("can_deploy") or cfg.get("can-deploy"):
+                cmd.append("--can-deploy")
             if dry:
                 cmd.append("--dry-run")
             jobs.append((feat, tool, cfg, cmd))

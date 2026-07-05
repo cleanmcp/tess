@@ -360,6 +360,8 @@ case "$cmd" in
   inbox)    exec python3 "$TESS_BIN/_tess-comms.py" inbox "$@" ;;
   team)     exec python3 "$TESS_BIN/_tess-team.py" "$@" ;;
   orchestrate|orch) exec python3 "$TESS_BIN/_tess-orchestrate.py" "$@" ;;
+  ship)     _validname "${1:-}" "feature name" || exit 2; exec python3 "$TESS_BIN/_tess-ship.py" ship "$@" ;;
+  spend)    exec python3 "$TESS_BIN/_tess-ship.py" spend "$@" ;;
   wait)     exec python3 "$TESS_BIN/_tess-watch.py" wait "$@" ;;
   watch)    exec python3 "$TESS_BIN/_tess-watch.py" watch "$@" ;;
   kill)

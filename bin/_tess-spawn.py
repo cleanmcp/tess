@@ -7,6 +7,13 @@
 #   --model M    model at launch — verified applied, both claude and kimi
 #   --effort E   effort/thinking level — verified applied
 #   --tag T      hcom group tag (default: feat, so names read feat-xxxx)
+#   --readonly   ENFORCED read-only role (claude: --permission-mode plan,
+#                kimi: --plan) — not just prompt text
+#   --can-deploy allow deploy commands (default: a curated deny-list of
+#                deploy-ish Bash patterns is enforced via --disallowedTools;
+#                override the list with TESS_DEPLOY_DENY in config)
+#   --budget N   hard spend cap in USD (claude --max-budget-usd; recorded
+#                for tess spend)
 #   --no-auto-trust  don't answer the folder-trust dialog automatically
 #   --dry-run    print the exact plan, do nothing
 #
@@ -32,6 +39,27 @@ RESERVED = set((os.environ.get("TESS_RESERVED") or "").split())
 # friendly → real model ids (anything unknown passes through untouched)
 CLAUDE_MODELS = {"fable": "claude-fable-5", "fable5": "claude-fable-5",
                  "fable-5": "claude-fable-5"}
+
+# deploy-ish commands denied unless --can-deploy (claude permission patterns)
+DEPLOY_DENY = (os.environ.get("TESS_DEPLOY_DENY") or
+               "Bash(gcloud run deploy:*),Bash(gcloud app deploy:*),"
+               "Bash(gcloud builds submit:*),Bash(vercel deploy:*),"
+               "Bash(vercel --prod:*),Bash(kubectl apply:*),"
+               "Bash(terraform apply:*),Bash(fly deploy:*),"
+               "Bash(gh pr merge:*)").split(",")
+BUDGETS = os.path.expanduser("~/.config/tess/state/budgets.json")
+
+
+def record_budget(name, tool, model, budget):
+    import json
+    try:
+        data = json.load(open(BUDGETS))
+    except (OSError, ValueError):
+        data = {}
+    data[name] = {"tool": tool, "model": model, "budget_usd": budget,
+                  "started": __import__("time").strftime("%F %T")}
+    os.makedirs(os.path.dirname(BUDGETS), exist_ok=True)
+    json.dump(data, open(BUDGETS, "w"), indent=1)
 
 
 def die(msg, code=1):
@@ -96,8 +124,9 @@ def main():
     if tool not in ("claude", "kimi"):
         die(f"unknown tool '{tool}' (claude or kimi)")
 
-    feat = prompt = pfile = model = effort = tag = None
+    feat = prompt = pfile = model = effort = tag = budget = None
     auto_trust, dry = True, False
+    readonly = can_deploy = False
     pos = []
 
     def val(i):
@@ -120,6 +149,13 @@ def main():
         elif a == "--tag":
             tag = val(i)
             i += 1
+        elif a == "--budget":
+            budget = val(i)
+            i += 1
+        elif a == "--readonly":
+            readonly = True
+        elif a == "--can-deploy":
+            can_deploy = True
         elif a == "--no-auto-trust":
             auto_trust = False
         elif a == "--dry-run":
@@ -155,15 +191,35 @@ def main():
     if tool == "claude" and model:
         model = CLAUDE_MODELS.get(model.lower(), model)
     tool_args = []
+    roles = []
     if model:
         # best effort at launch; verified (and fixed) after the agent is up
         tool_args += (["-m", model] if tool == "kimi" else ["--model", model])
+    if readonly:
+        # ENFORCED by the tool's own permission system, not prompt text
+        tool_args += ["--plan"] if tool == "kimi" else ["--permission-mode", "plan"]
+        roles.append("readonly (enforced: " + ("kimi --plan" if tool == "kimi"
+                     else "claude --permission-mode plan") + ")")
+    if budget:
+        if tool == "claude":
+            tool_args += ["--max-budget-usd", str(budget)]
+            roles.append(f"budget ${budget} (enforced: --max-budget-usd)")
+        else:
+            roles.append(f"budget ${budget} ⚠ kimi has no spend cap — recorded only")
+    if not can_deploy and not readonly and tool == "claude":
+        tool_args += ["--disallowedTools", *DEPLOY_DENY]
+        roles.append(f"no-deploy (enforced: {len(DEPLOY_DENY)} denied Bash patterns; "
+                     f"lift with --can-deploy)")
+    elif can_deploy:
+        roles.append("can-deploy (deny-list lifted)")
 
     if dry:
         print(f"would spawn: {tool} in {wdir}" + (f" [tag {tag}]" if tag else ""))
         if feat and feat != "." and not os.path.isdir(wdir):
             print(f"would create worktree: {feat}")
         print(f"  launch args: {tool_args or '(none)'}")
+        for r in roles:
+            print(f"  role: {r}")
         if model:
             print(f"  then verify model = {model} (fix via /model + screen check)")
         if effort:
@@ -182,6 +238,10 @@ def main():
     try:
         name = launch(tool, wdir, tag=tag, tool_args=tool_args)
         print(f"  agent: {name}")
+        for r in roles:
+            print(f"  {r}")
+        if budget or readonly:
+            record_budget(name, tool, model, budget)
 
         # settle + clear the trust dialog before anything else
         inject_kw = dict(auto_trust=auto_trust)
