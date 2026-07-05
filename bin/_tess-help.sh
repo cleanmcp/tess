@@ -38,6 +38,12 @@ case "$c" in
   voice)     h "tess voice" "Type/dictate loop (pairs with Wispr Flow)." ;;
   agents)    h "tess agents" "Dashboard of running AI agents (hcom)." ;;
   hcom)      h "tess hcom <anything>" "Full hcom CLI under tess — e.g. tess hcom list -v · tess hcom events --last 5. You never need to install or call hcom directly." ;;
+  tell)      h "tess tell <agent|feature|all> [--intent request|inform|ack] [--raw] -- <msg>" \
+    "Speak as @bigboss. A FEATURE name messages all its agents; 'all' broadcasts." \
+    "@words inside the message that collide with live agent names are invisibly escaped so nobody gets accidentally DM'd (emails/handles arrive intact). --raw disables that." ;;
+  inbox)     h "tess inbox [--all|--peek|--json]" \
+    "Your unread mail as the lead: @bigboss mentions + agent reports (broadcasts), full text." \
+    "Reading marks them read (cursor in ~/.config/tess/state). --peek doesn't; --all shows history." ;;
   report)    h "tess report <agent> [--n N] [--json]" \
     "The agent's FULL last message (no truncation), plain text — scriptable. --n 3 for the last 3 exchanges." ;;
   digest)    h "tess digest [--json]" \
