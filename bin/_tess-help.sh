@@ -37,6 +37,9 @@ case "$c" in
   listen)    h "tess listen" "Hands-free: say \"tess, <what you want>\". Uses whisper + local model. Ctrl+C to stop." ;;
   voice)     h "tess voice" "Type/dictate loop (pairs with Wispr Flow)." ;;
   agents)    h "tess agents" "Dashboard of running AI agents (hcom)." ;;
+  hcom)      h "tess hcom <anything>" "Full hcom CLI under tess — e.g. tess hcom list -v · tess hcom events --last 5. You never need to install or call hcom directly." ;;
+  kill)      h "tess kill <agent|feature|tag:X|all>" \
+    "Kill an agent (closes its pane). A FEATURE name kills only that feature's agents and keeps the worktree (full teardown: tess done)." ;;
   inject)    h "tess inject <agent> [--timeout N] [--retries N] [--force] -- <text>" \
     "Reliably type a prompt into a running agent's terminal: waits until its input is READY, submits, then CONFIRMS the turn landed (retries if not). Raw 'hcom term inject' silently drops keys while an agent is busy — this never does." \
     "Refuses if the agent is blocked on an approval dialog (use tess approve) or has a draft in its box (--force)." \

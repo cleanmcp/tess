@@ -22,6 +22,7 @@ def main():
     args = sys.argv[1:]
     dry = "--dry-run" in args
     yes = "--yes" in args or "-y" in args
+    agents_only = "--agents-only" in args  # tess kill <feat>: leave the worktree
     pos = [a for a in args if not a.startswith("-")]
     if len(pos) != 1:
         die("usage: tess done <feature> [--dry-run] [--yes]")
@@ -31,6 +32,20 @@ def main():
         die(f"no feature '{feat}' at {fdir} (see: tess ls)")
 
     agents = agents_under(fdir)
+    if agents_only:
+        if not agents:
+            print(f"no agents running in '{feat}'")
+            return
+        for a in agents:
+            print(f"  kill agent {a['name']}  ({a.get('status')})")
+        if dry:
+            print("(dry run — nothing done)")
+            return
+        for a in agents:
+            r = hcom("kill", a["name"])
+            print(f"  {'✓' if r.returncode == 0 else '✗'} killed {a['name']}")
+        return
+
     dirty = []
     for repo in sorted(os.listdir(fdir)):
         rdir = os.path.join(fdir, repo)
