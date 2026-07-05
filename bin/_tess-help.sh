@@ -47,6 +47,9 @@ case "$c" in
   tell)      h "tess tell <agent|feature|all> [--intent request|inform|ack] [--raw] -- <msg>" \
     "Speak as @bigboss. A FEATURE name messages all its agents; 'all' broadcasts." \
     "@words inside the message that collide with live agent names are invisibly escaped so nobody gets accidentally DM'd (emails/handles arrive intact). --raw disables that." ;;
+  orchestrate|orch) h "tess orchestrate \"<goal>\" [--model M] [--effort E] [--dry-run]   ·   tess orchestrate off" \
+    "Hire an AI lead: it decomposes the goal, spawns/steers sub-agents (tess team), receives all watch escalations, verifies, and reports to @bigboss." \
+    "'off' hands the lead role (escalations) back to you; agents keep running." ;;
   team)      h "tess team <spec.yaml|-> [--dry-run] [--parallel]" \
     "Fan out a whole fleet in one command: each agent gets its own worktree, prompt, model, effort and role template (defaults + per-agent overrides in the YAML)." \
     "Templates: investigate / implement / review (built-in) + your own in ~/.config/tess/templates/. count: N clones an agent." \

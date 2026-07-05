@@ -359,6 +359,7 @@ case "$cmd" in
   tell)     exec python3 "$TESS_BIN/_tess-comms.py" tell "$@" ;;
   inbox)    exec python3 "$TESS_BIN/_tess-comms.py" inbox "$@" ;;
   team)     exec python3 "$TESS_BIN/_tess-team.py" "$@" ;;
+  orchestrate|orch) exec python3 "$TESS_BIN/_tess-orchestrate.py" "$@" ;;
   wait)     exec python3 "$TESS_BIN/_tess-watch.py" wait "$@" ;;
   watch)    exec python3 "$TESS_BIN/_tess-watch.py" watch "$@" ;;
   kill)
