@@ -88,18 +88,32 @@ if [ "${1:-}" = "rm" ]; then
   [ -z "$FEATURE" ] && { c_red "usage: $0 rm <feature-name>"; exit 1; }
   check_name "$FEATURE"
   DEST_ROOT="$WORKTREE_PARENT/$FEATURE"
+  [ -d "$DEST_ROOT" ] || { c_red "no feature '$FEATURE' at $DEST_ROOT"; exit 1; }
   c_blue "Removing worktrees for feature '$FEATURE'"
-  for repo in "${REPOS[@]}"; do
-    src="$CORE_DIR/$repo"
-    dst="$DEST_ROOT/$repo"
+  # remove what's actually THERE (not just the configured repo list, so
+  # features created with --all or an older config tear down fully too)
+  for dst in "$DEST_ROOT"/*/; do
     [ -d "$dst" ] || continue
+    repo="$(basename "$dst")"; src="$CORE_DIR/$repo"
     c_yellow "  $repo"
-    git -C "$src" worktree remove --force "$dst" 2>/dev/null \
-      && echo "      removed worktree" \
-      || c_red "      could not remove (uncommitted changes? use git -C $src worktree remove --force)"
+    if [ -d "$src" ] && git -C "$src" worktree remove --force "${dst%/}" 2>/dev/null; then
+      echo "      removed worktree"
+      git -C "$src" worktree prune 2>/dev/null || true
+    elif [ ! -e "$dst/.git" ] && rmdir "${dst%/}" 2>/dev/null; then
+      echo "      removed empty folder (was not a worktree)"
+    else
+      c_red "      could not remove — try: git -C $src worktree remove --force ${dst%/}"
+    fi
   done
-  rmdir "$DEST_ROOT" 2>/dev/null || true
-  c_green "Done."
+  # the folder shell: orientation files tess wrote, then the dir itself
+  rm -f "$DEST_ROOT/AGENTS.md" "$DEST_ROOT/CLAUDE.md"
+  if rmdir "$DEST_ROOT" 2>/dev/null; then
+    c_green "Done — '$FEATURE' fully removed."
+  else
+    c_yellow "  folder kept, it still contains:"
+    ls -A "$DEST_ROOT" | sed 's/^/      /'
+    echo "      (review, then: rm -rf $DEST_ROOT)"
+  fi
   exit 0
 fi
 

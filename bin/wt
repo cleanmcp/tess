@@ -25,18 +25,42 @@ case "${1:-ls}" in
     sed -n '2,7p' "$0" | sed 's/^# \{0,1\}//'; exit 0
     ;;
   ls|list|"")
-    # show feature dirs (everything in $TESS_WORKTREE_ROOT that isn't the core/repo plumbing)
-    find "$WASH" -mindepth 1 -maxdepth 1 -type d ! -name "$(basename "${TESS_CORE:-repos}")" -exec basename {} \; | sort
+    # real worktree state, not just folders: a feature is LIVE if a repo
+    # subfolder is an actual git worktree; otherwise it's a ghost shell.
+    find "$WASH" -mindepth 1 -maxdepth 1 -type d ! -name "$(basename "${TESS_CORE:-repos}")" -print0 |
+    while IFS= read -r -d '' f; do
+      feat="$(basename "$f")"; live=""
+      for sub in "$f"/*/; do
+        [ -e "${sub%/}/.git" ] && live="${live:+$live }$(basename "$sub")"
+      done
+      if [ -n "$live" ]; then printf '%s\t[%s]\n' "$feat" "$live"
+      else printf '%s\t(ghost — no worktrees; tess clean removes it)\n' "$feat"; fi
+    done | sort | column -t -s$'\t'
     exit 0
     ;;
   rm|remove)
     shift; exec "$SCRIPT" rm "$@"
     ;;
   prune)
-    # clear stale worktree registrations left behind by manual folder deletes
+    # 1) clear stale worktree registrations left behind by manual folder deletes
     for r in ${TESS_REPOS_ALL:-${TESS_REPOS:-}}; do
       d="${TESS_CORE:-$WASH/repos}/$r"
       [ -d "$d" ] && { echo "== $r =="; git -C "$d" worktree prune -v; }
+    done
+    # 2) sweep ghost feature shells: folders with no live worktree inside and
+    #    nothing in them beyond tess's own orientation files
+    find "$WASH" -mindepth 1 -maxdepth 1 -type d ! -name "$(basename "${TESS_CORE:-repos}")" -print0 |
+    while IFS= read -r -d '' f; do
+      live=0
+      for sub in "$f"/*/; do [ -e "${sub%/}/.git" ] && { live=1; break; }; done
+      [ "$live" = 1 ] && continue
+      leftovers="$(ls -A "$f" 2>/dev/null | grep -vx 'AGENTS.md' | grep -vx 'CLAUDE.md' || true)"
+      if [ -z "$leftovers" ]; then
+        rm -f "$f/AGENTS.md" "$f/CLAUDE.md"; rmdir "$f" 2>/dev/null \
+          && echo "swept ghost feature: $(basename "$f")"
+      else
+        echo "ghost feature '$(basename "$f")' kept — still contains: $(echo "$leftovers" | tr '\n' ' ')"
+      fi
     done
     echo "done. (orphan branches left intact — delete with: git -C $TESS_CORE/<repo> branch -D <name>)"
     exit 0
