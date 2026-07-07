@@ -58,6 +58,9 @@ cat <<EOF
      ${C}tess path${R} ${D}<feat> [repo]${R}  print a worktree's path (for cd)
      ${C}tess wt${R}             worktree status across repos
 
+  ${B}${G}📋 TODOS${R} ${D}(persistent coding checklist — every new session sees the open ones)${R}
+     ${C}tess todo${R}            list open todos ${D}(${C}tess todo add${R} <text> · ${C}done${R} <id> · ${C}all${R})${R}
+
   ${B}${G}🤖 AI AGENTS${R}
      ${C}tess claude${R} ${D}[feat] ["task"] [--model M --effort E]${R}  spawn Claude — worktree auto-created, settings VERIFIED
      ${C}tess kimi${R} ${D}[feat] ["task"] …${R}   same for Kimi (own models + thinking level)
@@ -249,7 +252,7 @@ case "$cmd" in
 esac
 
 # words that can never be feature/agent names (subcommands + obvious traps)
-TESS_RESERVED="help menu new ls list rm remove clean env branches path wt worktrees claude kimi agents agent loop resume r local offline small big med medium think partner post write brand ask voice listen git lg fish matrix bonsai pipes dex doctor disk cheat fix-files fixfiles update commands custom open app launch apps login startup brief hub person company add log people companies reminders todos followups calendar cal messages msg chat thread send text calls music read book readpos done inbox report digest status team orchestrate ship wait watch approve inject tell kill hcom diff spend all"
+TESS_RESERVED="help menu new ls list rm remove clean env branches path wt worktrees claude kimi agents agent loop resume r local offline small big med medium think partner post write brand ask voice listen git lg fish matrix bonsai pipes dex doctor disk cheat fix-files fixfiles update commands custom open app launch apps login startup brief hub person company add log people companies reminders todo todos followups calendar cal messages msg chat thread send text calls music read book readpos done inbox report digest status team orchestrate ship wait watch approve inject tell kill hcom diff spend all"
 export TESS_RESERVED
 _validname() {  # _validname <name> <what> — reject flag-like/reserved/path-unsafe names
   local n="${1:-}" what="${2:-name}"
@@ -268,6 +271,7 @@ case "$cmd" in
   menu|""|-h|--help) menu ;;
   help) if [ $# -gt 0 ]; then exec bash "$TESS_BIN/_tess-help.sh" "$@"; else menu; fi ;;
   update)   exec bash "$TESS_BIN/_tess-update.sh" --now ;;
+  todo|todos)    exec bash "$TESS_BIN/_tess-todo.sh" "$@" ;;
   commands|custom)
     cdir="$HOME/.config/tess/commands"; mkdir -p "$cdir"
     case "${1:-list}" in
@@ -474,7 +478,7 @@ PL
   log)      _log "$@" ;;
   people)   python3 "$TESS_BIN/_tess-list.py" people ;;
   companies|company-list) python3 "$TESS_BIN/_tess-list.py" companies ;;
-  reminders|todos|followups) python3 "$TESS_BIN/_tess-list.py" reminders ;;
+  reminders|followups) python3 "$TESS_BIN/_tess-list.py" reminders ;;
 
   # --- life (macOS: calendar / messages / calls) ---
   calendar|cal) exec "$TESS_BIN/_tess-cal" "$@" ;;

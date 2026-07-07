@@ -56,6 +56,14 @@ tess new --all <feature>     include optional repos
 tess ls | rm | env | clean | branches
 ```
 
+### 📋 Coding todos — one checklist across every session
+A persistent coding to-do list (plain markdown checkboxes in `~/.config/tess/state/todos.md`). The open items are injected at the top of **every new agent session** via a `SessionStart` hook — so work survives the session that started it, and the next agent (or you) picks up where the last left off.
+```
+tess todo                    list open todos (add `all` to include done)
+tess todo add [-p <proj>] <text>   add one (auto-tagged with the current repo)
+tess todo done <id>          check it off   (reopen / rm / clear / edit)
+```
+
 ### 🤖 AI agents
 ```
 tess claude [feat] ["task"] [--model M --effort E]   spawn Claude in a worktree, task + settings VERIFIED applied

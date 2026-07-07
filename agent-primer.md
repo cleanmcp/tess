@@ -8,6 +8,10 @@
 - `tess env <feature>` (refresh .env) · `tess rm <feature>` (tear down) · `tess clean` (prune stale) · `tess branches` (delete merged)
 - A feature root (`<worktree-root>/<feature>`) is NOT a repo — it holds one git worktree per repo; `cd` into a subfolder to run git.
 
+**Coding todos (persistent across sessions — the open ones are shown to you at session start):**
+- `tess todo` (list open) · `tess todo add [-p <project>] <text>` · `tess todo done <id>` (check off) · `tess todo all` · `tess todo rm <id>`.
+- This is the shared work-tracker across sessions. When you finish a listed item, check it off; when you uncover follow-up work, add it. Prefer it over an in-session-only todo so the next session (and the human) sees the real state. Don't restate the whole list back to the user unless asked.
+
 **Memory / the user's vault (read/write on demand — do NOT bulk-load it):**
 - `tess <name>` read a note · `tess people`/`companies`/`reminders` · `tess brief` (what's going on)
 - `tess add <name> -- <text>` · `tess person <name> -- <desc>` · `tess log -- <text>`

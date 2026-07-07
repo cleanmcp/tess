@@ -22,6 +22,12 @@ case "$c" in
   path)      h "tess path <feature> [repo]" "Print a worktree's path — for agents: cd \"\$(tess path <feature> <repo>)\"." ;;
   wt)        h "tess wt" "Full git worktree status across all repos." ;;
 
+  todo|todos) h "tess todo   ·   tess todo add [-p <project>] <text>   ·   tess todo done <id>" \
+    "A persistent coding checklist shared across sessions (markdown checkboxes in ~/.config/tess/state/todos.md)." \
+    "Open items are injected at the top of every new agent session (a SessionStart hook running 'tess todo --hook'), so work survives the session that created it." \
+    "Subcommands: (bare)=list open · add · done <id…> · reopen <id> · rm <id> · clear (drop completed) · all · edit." \
+    "${D}e.g. tess todo add -p api \"wire the interpreter into runLeadgen\"${R}" ;;
+
   claude|kimi) h "tess claude|kimi [feat|.] [\"prompt\"] [--model M] [--effort E] [--file f]" \
     "Launch the agent. With a feature name, create/enter that worktree first ('.' = current dir, new pane)." \
     "With a prompt/model/effort, the spawner VERIFIES each actually applied (trust dialog answered, /model + /effort confirmed on screen, prompt transcript-confirmed) before handing off." \
@@ -87,7 +93,7 @@ case "$c" in
     "${D}e.g. tess loop claude \"add tests for the auth module and make them pass\"${R}" ;;
 
   people|companies) h "tess people | companies" "Roster of your contacts / companies (from note tags + folders)." ;;
-  reminders|todos|followups) h "tess reminders" "Open follow-ups — every unchecked '- [ ]' item across your vault." ;;
+  reminders|followups) h "tess reminders" "Open follow-ups — every unchecked '- [ ]' item across your vault." ;;
   person|company) h "tess person|company <name> -- <desc>" "Create a tagged contact/company note (shows in the roster)." ;;
   add)       h "tess add <name> -- <text>" "Append a line to a note (creates it if new)." ;;
   log)       h "tess log -- <text>" "Quick timestamped capture to your log note." ;;
