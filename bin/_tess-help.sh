@@ -43,14 +43,14 @@ case "$c" in
   ask)       h "tess ask \"<question>\"" "Say what you want in plain words; it routes to the right command or answers, and speaks it." ;;
   listen)    h "tess listen" "Hands-free: say \"tess, <what you want>\". Uses whisper + local model. Ctrl+C to stop." ;;
   voice)     h "tess voice" "Type/dictate loop (pairs with Wispr Flow)." ;;
-  agents)    h "tess agents [--json]" "Live dashboard of running AI agents (hcom). --json = machine-readable (same as tess status --json)." ;;
+  agents)    h "tess agents [--json]" "Live dashboard of running AI agents. --json = machine-readable (same as tess status --json)." ;;
   status)    h "tess status [--json]" \
     "Fleet at a glance: every agent's state (BLOCKED first), age, worktree, unread count, current activity." ;;
   diff)      h "tess diff <agent|feature> [--full]" \
     "What an agent/feature has actually changed: per-worktree dirty files + diffstat (--full = whole diff)." ;;
   approve)   h "tess approve <agent> [--option N]" \
     "Answer a BLOCKED agent's approval dialog: shows the dialog, accepts the highlighted option (or types option N first), confirms it unblocked." ;;
-  hcom)      h "tess hcom <anything>" "Full hcom CLI under tess — e.g. tess hcom list -v · tess hcom events --last 5. You never need to install or call hcom directly." ;;
+  hcom)      h "tess hcom <anything>" "Raw fleet-comms passthrough (power users / agents) — the low-level layer tess drives for you. You never need this directly; every fleet action has a first-class tess command (agents, status, tell, inject, report …)." ;;
   tell)      h "tess tell <agent|feature|all> [--intent request|inform|ack] [--raw] -- <msg>" \
     "Speak as @bigboss. A FEATURE name messages all its agents; 'all' broadcasts." \
     "@words inside the message that collide with live agent names are invisibly escaped so nobody gets accidentally DM'd (emails/handles arrive intact). --raw disables that." ;;
@@ -71,7 +71,7 @@ case "$c" in
     "Block until the target(s) stop working. Exit 0 = idle/finished, 2 = BLOCKED on approval, 3 = timeout, 4 = died." ;;
   watch)     h "tess watch [on|off|status] [--phone] [--once] [--interval N]" \
     "The escalation loop (F6): the MOMENT any agent goes BLOCKED / DIES / sits IDLE >20s it pings the lead —" \
-    "hcom DM to the lead identity (default @bigboss → shows in tess inbox; tess orchestrate registers its own lead agent) and, with --phone + TESS_NOTIFY_CONTACT in config, your iPhone via iMessage." \
+    "a DM to the lead identity (default @bigboss → shows in tess inbox; tess orchestrate registers its own lead agent) and, with --phone + TESS_NOTIFY_CONTACT in config, your iPhone via iMessage." \
     "'on' runs it in the background (nohup), 'off' stops it, bare = foreground, --once = single scan (cron-able)." ;;
   inbox)     h "tess inbox [--all|--peek|--json]" \
     "Your unread mail as the lead: @bigboss mentions + agent reports (broadcasts), full text." \
@@ -84,7 +84,7 @@ case "$c" in
   kill)      h "tess kill <agent|feature|tag:X|all>" \
     "Kill an agent (closes its pane). A FEATURE name kills only that feature's agents and keeps the worktree (full teardown: tess done)." ;;
   inject)    h "tess inject <agent> [--timeout N] [--retries N] [--force] -- <text>" \
-    "Reliably type a prompt into a running agent's terminal: waits until its input is READY, submits, then CONFIRMS the turn landed (retries if not). Raw 'hcom term inject' silently drops keys while an agent is busy — this never does." \
+    "Reliably type a prompt into a running agent's terminal: waits until its input is READY, submits, then CONFIRMS the turn landed (retries if not). Raw terminal injection silently drops keys while an agent is busy — this never does." \
     "Refuses if the agent is blocked on an approval dialog (use tess approve) or has a draft in its box (--force)." \
     "${D}e.g. tess inject keto -- status report please${R}" ;;
   loop)      h "tess loop <claude|kimi> \"<goal>\" [max-rounds]" \

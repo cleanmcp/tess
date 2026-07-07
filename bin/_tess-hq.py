@@ -12,8 +12,8 @@ import sys
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
-from _tess_agents import (agents_under, hcom, list_agents, press, screen_text,
-                          status_of, term_state)
+from _tess_agents import (agents_under, brand, hcom, list_agents, press,
+                          screen_text, scrub, status_of, term_state)
 
 WORKTREE_ROOT = (os.environ.get("TESS_WORKTREE_ROOT") or os.path.expanduser("~/worktrees")).rstrip("/")
 
@@ -74,7 +74,7 @@ def cmd_report(args):
         if len(exs) > 1:
             u = " ".join((ex.get("user") or "").split())
             print(f"── #{ex.get('position')} ── task: {u[:100]}")
-        print((ex.get("action") or "(no reply yet)").rstrip())
+        print(scrub(ex.get("action")) or "(no reply yet)")
         if len(exs) > 1:
             print()
 
@@ -88,11 +88,11 @@ def cmd_digest(args):
         if me and a["name"] == me:
             continue
         exs = exchanges(a["name"], 1)
-        last = (exs[-1].get("action") or "").strip() if exs else ""
-        task = " ".join((exs[-1].get("user") or "").split())[:120] if exs else ""
+        last = scrub(exs[-1].get("action")) if exs else ""
+        task = " ".join(scrub(exs[-1].get("user")).split())[:120] if exs else ""
         rows.append({
             "name": a["name"], "tool": a.get("tool"), "status": a.get("status"),
-            "status_detail": a.get("status_detail") or a.get("description") or "",
+            "status_detail": brand(a.get("status_detail") or a.get("description")),
             "age_s": a.get("status_age_seconds"),
             "dir": nice_dir(a.get("directory")),
             "unread": a.get("unread_count", 0),
@@ -126,7 +126,7 @@ def cmd_status(args):
     for a in list_agents():
         rows.append({
             "name": a["name"], "tool": a.get("tool"), "status": a.get("status"),
-            "detail": " ".join((a.get("status_detail") or a.get("description") or "").split()),
+            "detail": " ".join(brand(a.get("status_detail") or a.get("description")).split()),
             "age_s": a.get("status_age_seconds"), "dir": nice_dir(a.get("directory")),
             "unread": a.get("unread_count", 0), "tag": a.get("tag"),
         })
@@ -235,7 +235,7 @@ def cmd_approve(args):
         if st != "blocked":
             print(f"✓ {agent} unblocked (now {st})")
             return
-    die(f"'{agent}' is still blocked — check the pane: tess hcom term {agent}", 3)
+    die(f"'{agent}' is still blocked — check the pane: tess agents", 3)
 
 
 def main():

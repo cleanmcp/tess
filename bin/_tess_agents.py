@@ -9,6 +9,34 @@ import time
 
 HCOM = (os.environ.get("TESS_HCOM") or "hcom").split()
 
+# Client-facing branding: the user should only ever see "tess", never the
+# backend. Two things leak: (1) the backend's own "vX.YZ available — run
+# `... update`" nag banner (stderr), and (2) the [uvx hcom:<name>] tracking
+# marker agents are told to echo in their first reply. Strip both wherever
+# tess surfaces backend output. This is cosmetic only — the passthrough and
+# update mechanism keep working.
+_NAG_RE = re.compile(r"^.*hcom v[0-9][0-9.]* available.*$\n?", re.MULTILINE)
+_MARK_RE = re.compile(r"\[(?:uvx )?hcom:[^\]]*\]")
+_TOK_RE = re.compile(r"\buvx hcom\b|\bhcom\b")
+
+
+def scrub(text):
+    """Strip the backend's nag banner and [uvx hcom:name] markers from any
+    string before it reaches the user. Safe on free-form report prose — only
+    removes noise, never rewrites meaning."""
+    if not text:
+        return text
+    return _MARK_RE.sub("", _NAG_RE.sub("", text)).strip()
+
+
+def brand(text):
+    """Like scrub(), plus rebrand the backend invocation token to 'tess'. Use
+    ONLY for short activity/detail strings (an agent's current command shown in
+    tess status/digest) — never on prose, where it could mangle content."""
+    if not text:
+        return text
+    return _TOK_RE.sub("tess", scrub(text))
+
 
 class AgentError(Exception):
     def __init__(self, code, msg):
@@ -19,11 +47,15 @@ class AgentError(Exception):
 
 def hcom(*args, timeout=60):
     try:
-        return subprocess.run([*HCOM, *args], capture_output=True, text=True, timeout=timeout)
+        r = subprocess.run([*HCOM, *args], capture_output=True, text=True, timeout=timeout)
     except (subprocess.TimeoutExpired, FileNotFoundError) as e:
         r = subprocess.CompletedProcess(args, 124)
         r.stdout, r.stderr = "", str(e)
         return r
+    # drop the nag banner so surfaced errors never leak the backend name
+    if r.stderr:
+        r.stderr = _NAG_RE.sub("", r.stderr)
+    return r
 
 
 def hcom_json(*args, timeout=60):
@@ -189,7 +221,7 @@ def inject(agent, text, timeout=180, retries=3, force=False, raw=False,
     if ok:
         return ok
     raise AgentError(4, f"submitted to '{agent}' but could not confirm it landed after "
-                        f"{retries} attempts — check `tess agents` / `hcom term {agent}`")
+                        f"{retries} attempts — check `tess agents`")
 
 
 def agents_under(path, agents=None):
@@ -229,7 +261,7 @@ def launch(tool, dir, tag=None, tool_args=(), timeout=90):
         cmd += ["--tag", tag]
     r = hcom(*cmd, *tool_args, timeout=timeout)
     if r.returncode == 1:
-        raise AgentError(1, f"hcom launch failed: {(r.stderr or r.stdout).strip()[-300:]}")
+        raise AgentError(1, f"agent launch failed: {(r.stderr or r.stdout).strip()[-300:]}")
     m = LAUNCH_NAME_RE.search(r.stdout or "")
     if m:
         name = m.group(1)
@@ -247,4 +279,4 @@ def launch(tool, dir, tag=None, tool_args=(), timeout=90):
             if a.get("created_at", 0) >= t0 - 5:
                 return a["name"]
         time.sleep(2)
-    raise AgentError(1, f"launched {tool} but never saw it register with hcom")
+    raise AgentError(1, f"launched {tool} but never saw it register with the fleet")
