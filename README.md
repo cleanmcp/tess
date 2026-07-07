@@ -1,21 +1,31 @@
 # tess
 
-**One command for your whole machine.** `tess` is a single CLI that ties together your code workflow, your notes/brain, your local AI, and your Mac's messages/calls/calendar — for you *and* for your AI coding agents (Claude Code, Kimi, etc.), who use it as their primary tool.
-
-Type `tess` to see everything. Forget the rest.
+**Session orchestration for AI development.** One terminal to spawn, watch, steer, and ship every stream of work an AI agent is doing for you — each in its own isolated session, none of them colliding or getting lost.
 
 ```
-tess                      the menu — everything you can do
-tess new redis-fix        spin up isolated git worktrees across your repos
-tess resume               resume any past Claude/Kimi session, in its folder
-tess john                 read a note from your vault
-tess messages alex        recent texts with a contact (by name)
-tess local "explain X"    offline AI (local model, no internet)
-tess read                 a reading companion for your current Apple Book
-tess ask "what's on my calendar"   voice-routed answers
+tess                         the menu — everything, one screen
+tess claude redis-fix "cut p99 on the cache path"   spawn a session (own worktree, agent, context)
+tess team fleet.yaml         fan out a whole fleet in one command
+tess status                  the fleet at a glance — BLOCKED sessions first
+tess ship redis-fix          diff → tests → push → PR, then tear it down
 ```
 
-> Built for macOS + [cmux](https://cmux.com) (a Ghostty-based terminal). Most commands work in any terminal; worktree-opening and inline images are best in cmux.
+---
+
+## You don't have an agent problem. You have a session problem.
+
+Everyone can run an agent now. That's not the hard part.
+
+The hard part shows up an hour later, when you look up and realize you're not running *an agent* — you're running a dozen half-finished **sessions**. Six terminals. Four branches mid-change. An agent from earlier you completely forgot about. Two of them editing the same file. Context you can't get back.
+
+You've been doing session management by hand this whole time — badly — and never noticed that *was* the problem.
+
+**tess makes the session the unit of work.** Every stream of work is a durable, isolated session — its own worktree, its own context and state, and the agent driving it — that you can spawn, watch, resume, steer, and ship, all from one place. The wedge isn't "run an agent." It's running *many* of them without losing the thread.
+
+- **Isolation** — every session gets its own git worktree. No two agents fight over the same file.
+- **Visibility** — one command shows the whole fleet: who's working, who's blocked, who's drifted, what each one changed.
+- **Control** — steer a running session mid-flight, answer its approval prompts, or hand the whole fleet to an AI lead.
+- **Shipping** — collect a finished session into a PR and tear it down in one command.
 
 ---
 
@@ -24,124 +34,151 @@ tess ask "what's on my calendar"   voice-routed answers
 ```bash
 git clone https://github.com/cleanmcp/tess.git
 cd tess
-./install.sh            # interactive: core + optional setup (all skippable)
-# or: ./install.sh --minimal   for just the scripts
+./install.sh              # interactive: core + optional setup (all skippable)
+# or: ./install.sh --minimal    just the scripts, no prompts
 ```
 
-Then edit **`~/.config/tess/config`** to point at your notes vault and repos (see [Config](#config)). Make sure `~/.local/bin` is on your `PATH`.
+Then make sure `~/.local/bin` is on your `PATH`, point `~/.config/tess/config` at your repos, and type `tess`.
 
-`tess` degrades gracefully — anything you don't set up just isn't available; the rest works.
+Nothing you skip breaks anything else — tess degrades gracefully. Set up only what you use.
+
+> **Platform.** The core (worktrees + the fleet + offline local AI) is cross-platform on any Unix shell. It's tuned for macOS and [cmux](https://cmux.com) (a Ghostty-based terminal) — worktree-opening and inline images are best there. The optional "life" features (messages/calls/calendar) are macOS-only.
 
 ---
 
-## What it does
+## A session
 
-### 🧠 Brain — your markdown vault (read/write, on demand)
-Works with any markdown notes folder. The recommended app is **[Lokus](https://github.com/lokus-ai/lokus)** (the installer can grab it for you), but Obsidian or plain files work too. Nothing auto-loads, so it costs zero tokens until you ask.
+A session is one worktree + one agent + the context it's holding. You spawn it with a name and a task; tess creates the isolated worktree, launches the agent in it, and **verifies** the task, model, and effort actually took before handing off.
+
 ```
-tess <name>                  read a note (person / project / topic)
-tess people | companies      rosters (from note tags/folders)
-tess reminders               open follow-ups (unchecked - [ ] items)
-tess add <name> -- <text>    append to a note (creates it)
-tess person <name> -- <desc> add a contact note
-tess log -- <text>           quick timestamped capture
-tess brief                   your "what's going on now" note
+tess claude <feature> "<task>"  [--model M] [--effort E] [--readonly] [--budget N]
+tess kimi   <feature> "<task>"  …            same, for Kimi (its own models + thinking level)
+tess resume                      resume ANY past session (any folder), picked by AI summary
 ```
 
-### 🌳 Worktrees — multi-repo feature isolation
-Spin up a matching git worktree across several repos at once, with env files copied in. Self-heals stale registrations.
+Roles are **enforced**, not suggested: `--readonly` runs the agent in plan mode, deploy commands are denied unless `--can-deploy`, and `--budget N` is a hard USD cap. Every `--help` is safe — it never creates a worktree or spawns anything.
+
+## The fleet — many sessions at once
+
+One tool drives the whole fleet. You are `@bigboss`; the coordination backend is folded underneath.
+
 ```
-tess new <feature>           worktrees for your default repos, opens in cmux
+tess team fleet.yaml         fan out N sessions from a YAML spec — each with its own worktree,
+                             prompt, model, effort, and role (investigate/implement/review). --dry-run first.
+tess orchestrate "<goal>"    hire an AI lead: it decomposes the goal, spawns sessions, monitors,
+                             unblocks, synthesizes, and reports back. 'off' takes command back.
+
+tess status                  fleet table — BLOCKED sessions first (--json for scripts)
+tess digest                  everyone's last report, merged
+tess diff <session>          what a session actually changed (per-worktree diffstat)
+tess report <session>        one session's full last message
+
+tess tell <session|all> -- <msg>    steer a running session (speaks as @bigboss)
+tess inject <session> -- <text>     force a prompt into its terminal (waits, confirms it landed)
+tess approve <session>              answer a blocked session's approval dialog
+tess watch on [--phone]             escalation daemon: BLOCKED / IDLE / DIED sessions ping you instantly
+
+tess ship <feature> [--merge]       diff → tests → push → PR → optional squash-merge
+tess done <feature>                 one-shot teardown: kill its agents + panes + worktrees
+tess spend                          budget ledger (spawn-time caps are enforced)
+```
+
+## Worktrees — the isolation layer
+
+Sessions ride on git worktrees. You can also drive them directly for multi-repo feature work.
+
+```
+tess new <feature>           a matching worktree across your configured repos, env files copied in
 tess new --all <feature>     include optional repos
-tess ls | rm | env | clean | branches
+tess ls | rm | env | clean | branches | wt | path
 ```
 
-### 📋 Coding todos — one checklist across every session
-A persistent coding to-do list (plain markdown checkboxes in `~/.config/tess/state/todos.md`). The open items are injected at the top of **every new agent session** via a `SessionStart` hook — so work survives the session that started it, and the next agent (or you) picks up where the last left off.
+## Coding todos — one checklist across every session
+
+A persistent, plain-markdown checklist. The open items are injected at the top of **every new agent session** via a `SessionStart` hook — so work survives the session that started it, and the next agent (or you) picks up where the last left off.
+
 ```
-tess todo                    list open todos (add `all` to include done)
+tess todo                    list open todos
 tess todo add [-p <proj>] <text>   add one (auto-tagged with the current repo)
-tess todo done <id>          check it off   (reopen / rm / clear / edit)
+tess todo done <id>          check it off
 ```
 
-### 🤖 AI agents
-```
-tess claude [feat] ["task"] [--model M --effort E]   spawn Claude in a worktree, task + settings VERIFIED applied
-tess kimi   [feat] ["task"] [--model M --effort E]   same for Kimi (own models + thinking level)
-tess resume                  resume ANY past Claude/Kimi session (any folder)
-tess think | post            thinking-partner / content-partner modes
-tess local | small | big     offline local models (ollama)
-tess ask "<q>" | tess voice | tess listen    natural-language + hands-free voice
-```
-`--readonly` is enforced (plan mode), `--auto` starts straight in auto permission mode (no per-command approval prompts — footer-verified), deploy commands are denied unless `--can-deploy`, and `--budget N` is a hard USD cap. Every `--help` is safe — it never creates worktrees or spawns anything.
+---
 
-### 🚁 The fleet — many agents at once (you are `@bigboss`)
-One tool drives the whole fleet; hcom is folded underneath (`tess hcom <anything>` for the rest).
-```
-tess team fleet.yaml         fan out N agents: per-agent worktree, prompt, model, effort,
-                             role template (investigate/implement/review), count — --dry-run first
-tess orchestrate "<goal>"    hire an AI lead: it decomposes, spawns, monitors, unblocks,
-                             synthesizes, reports to you ('off' takes command back)
-tess status | digest         fleet table (BLOCKED first) | everyone's last report, merged
-tess report <agent>          one agent's FULL last message (scriptable)
-tess inbox                   your unread mail from the fleet (cursor-tracked)
-tess tell <agent|feat|all> -- <msg>   speak as @bigboss (agent-name @s in bodies auto-escaped)
-tess wait <feat|all>         block until done — exit 2 means someone needs approval
-tess watch on [--phone]      escalation daemon: BLOCKED / IDLE / DIED agents instantly ping
-                             the lead's inbox — and your iPhone (TESS_NOTIFY_CONTACT)
-tess approve <agent>         answer a blocked agent's approval dialog (shows it first)
-tess inject <agent> -- <t>   force a prompt into its terminal — waits till ready, confirms it landed
-tess diff <agent|feat>       what they actually changed (per-worktree diffstat)
-tess ship <feat> [--merge]   diff → tests (TESS_TEST_CMD) → push → PR → optional squash-merge
-tess done <feat>             one-shot teardown: kill its agents + panes + worktrees
-tess spend                   budget ledger (spawn-time caps are enforced)
+## Run a fleet (60 seconds)
+
+```bash
+# 1. describe the work — one session per agent
+cat > fleet.yaml <<'YAML'
+defaults: { model: claude-sonnet-5, effort: high }
+agents:
+  - { name: cache,  feature: redis-cache,  role: implement,   prompt: "add a redis cache to the hot read path" }
+  - { name: audit,  feature: sec-audit,    role: investigate, prompt: "audit auth middleware for authz gaps", readonly: true }
+  - { name: flake,  feature: flaky-tests,  role: implement,   prompt: "find and fix the top 3 flaky tests" }
+YAML
+
+tess team fleet.yaml --dry-run     # see the exact spawn plan first
+tess team fleet.yaml               # spawn all three — isolated worktrees, verified launch
+
+tess status                        # watch them — BLOCKED first
+tess approve audit                 # unblock one when it asks
+tess ship redis-cache --merge      # ship the one that's done
+tess done redis-cache              # tear it down
 ```
 
-### 📱 Life (macOS, local, read-only unless you send)
+---
+
+## Optional: the personal layer
+
+tess grew out of one developer's whole-machine setup, so it also ships a **brain** (a markdown notes vault) and **life** (macOS messages/calls/calendar) layer. These are **entirely optional** — off until you configure them, and they stay out of the way if you don't. They cost zero tokens and never auto-load.
+
+**Brain** — any markdown notes folder (Obsidian, [Lokus](https://github.com/lokus-ai/lokus), or plain files). Read/write on demand:
+
 ```
-tess messages [who]          recent iMessages/SMS incl. group chats (search by contact name)
-tess chat <name|group>       full conversation thread + inline images
-tess send <name> -- <msg>    send an iMessage
-tess calls                   call log with contact names
-tess calendar [days]         upcoming events (incl. recurring)
-tess read                    reading companion for your current Apple Book
+tess <name>                  read a note        tess add <name> -- <text>    append to a note
+tess people | companies      rosters            tess brief                   your "what's going on" note
 ```
 
-### 🩺 System + 🐾 fun
-`tess doctor` (health), `tess disk`, `tess cheat`, and toys: `tess fish | bonsai | matrix | pipes | dex`.
+**Life** (macOS, local, read-only unless you send) — reads your Mac's own SQLite databases; nothing leaves your machine:
+
+```
+tess messages [who]   tess chat <name>   tess send <name> -- <msg>   tess calls   tess calendar [days]
+```
+
+These need macOS permissions you grant yourself (Full Disk Access for reads; Automation for `send`). Skip them and the core is untouched.
 
 ---
 
 ## Config
 
-`~/.config/tess/config` (created by the installer from `config.example`):
+Everything user-specific lives in **`~/.config/tess/`** — *outside* the repo — so `git pull` (and the background auto-update) never overwrites it.
 
 ```sh
-TESS_VAULT="$HOME/Documents/tess-vault"    # your markdown notes vault
-TESS_HUB="$TESS_VAULT/hub"                  # where tess writes notes
-TESS_WORKTREE_ROOT="$HOME/worktrees"        # feature worktrees
-TESS_CORE="$TESS_WORKTREE_ROOT/repos"       # your source repos (one folder each)
-TESS_REPOS="app api"                        # repos to fan out across
+# ~/.config/tess/config   (created by the installer from config.example)
+TESS_WORKTREE_ROOT="$HOME/worktrees"        # where feature worktrees are created
+TESS_CORE="$TESS_WORKTREE_ROOT/repos"       # where your source repos live (one folder each)
+TESS_REPOS="app api"                        # default repos to fan out across
 TESS_REPOS_ALL="app api web"                # + optional repos (tess new --all)
-# TESS_GIT_REMOTE="https://github.com/your-org"   # optional auto-clone
+# TESS_GIT_REMOTE="https://github.com/your-org"   # optional: auto-clone missing repos
+# TESS_TEST_CMD="npm test"                        # run in each repo before `tess ship` pushes
+# TESS_VAULT="$HOME/Documents/notes"              # optional: a markdown notes vault (brain features)
 ```
 
-Local model tiers live in `~/.config/tess/models` (`small=` / `med=` / `big=`).
+```
+~/.config/tess/
+├── config          # your repos, paths, fleet knobs (TESS_* vars)
+├── models          # local model tiers (small= / med= / big=)
+├── templates/      # your own role templates for `tess team`
+└── commands/       # your own commands: an executable `foo` here → run as `tess foo`
+```
 
----
+Add a custom command:
+```bash
+tess commands new deploy      # scaffolds ~/.config/tess/commands/deploy, opens it
+tess deploy                   # runs it; TESS_* config vars are available inside
+```
 
-## The "life" features need permissions (macOS)
-
-These are **opt-in**. Grant only what you want; skip the rest.
-
-| Feature | Permission | Where |
-|---|---|---|
-| `messages` `calls` `calendar` `read` | **Full Disk Access** for your terminal/cmux | System Settings → Privacy & Security → Full Disk Access |
-| `send` | **Automation** (terminal → Messages) | Privacy & Security → Automation |
-| `calendar` | **Calendars** (if prompted) | Privacy & Security → Calendars |
-| `listen` | **Microphone** | prompts on first run |
-
-Everything is **local** — messages, calls, and calendar are read from your Mac's own SQLite databases and never leave your machine.
+Custom commands and config survive `tess update` (and the background auto-pull). `--ff-only` means an update won't clobber the repo if you've hacked on it locally.
 
 ---
 
@@ -149,41 +186,21 @@ Everything is **local** — messages, calls, and calendar are read from your Mac
 
 Installed by `./install.sh` if you say yes; each is optional:
 
+- **Fleet backend:** [hcom](https://github.com/aannoo/hcom) — tess runs it via `uvx hcom` out of the box if you have [uv](https://docs.astral.sh/uv).
 - **CLI extras:** `fzf zoxide lazygit eza bat ripgrep chafa` (nicer navigation + inline images)
-- **Offline AI:** [ollama](https://ollama.com) + a model (for `local`/`ask`/`voice`)
-- **Voice:** `whisper-cpp` + `sox` + a speech model (for `listen`)
-- **Multi-agent:** [hcom](https://github.com/aannoo/hcom) (for `agents` + coordination)
+- **Offline AI:** [ollama](https://ollama.com) + a model (for `tess local` / `ask` / `voice`)
+- **Voice:** `whisper-cpp` + `sox` + a speech model (for `tess listen`)
 
 ---
 
-## Agent integration
+## Agents use tess too
 
-`tess` is designed to be an agent's primary tool. Every interactive command **detects whether a human is present** — it prompts you, but when an agent runs it non-interactively it takes inline params and **fails with guidance instead of hanging**. Output is colored in a terminal and **plain when piped**, so agents get clean, parseable text.
+tess is designed to be an agent's primary tool. Every interactive command **detects whether a human is present** — it prompts you, but when an agent runs it non-interactively it takes inline params and **fails with guidance instead of hanging**. Output is colored in a terminal and **plain when piped**, so agents get clean, parseable text.
 
-Point your agents at it by adding a short section to their instructions (`CLAUDE.md`, `AGENTS.md`): tell them to run `tess` to discover commands and to pull/save context with `tess <name>` / `tess add` / `tess brief` on demand.
+The installer wires a short primer into your agents' instructions (`CLAUDE.md`, `AGENTS.md`) telling them to run `tess` to discover commands and to go through tess for worktrees and coordination rather than raw `git worktree` / backend calls.
 
 ---
 
 ## License
 
 MIT — see [LICENSE](LICENSE).
-
-## Customizing (survives updates)
-
-Everything user-specific lives in **`~/.config/tess/`** — *outside* the repo — so `git pull` (and the background auto-update) never overwrites it:
-
-```
-~/.config/tess/
-├── config          # your paths, repos, startup apps (TESS_* vars)
-├── models          # local model tiers
-└── commands/       # your own commands: an executable `foo` here → run as `tess foo`
-```
-
-Add a custom command:
-```bash
-tess commands new deploy      # scaffolds ~/.config/tess/commands/deploy, opens it
-# ...edit it...
-tess deploy                   # runs it; TESS_* config vars are available inside
-```
-
-Custom commands show in `tess` under **🧩 YOUR COMMANDS** and are never clobbered by updates. To update tess itself: `tess update` (or it auto-pulls in the background). `--ff-only` means it also won't clobber the repo if you've hacked on it locally.

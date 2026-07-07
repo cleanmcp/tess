@@ -52,9 +52,10 @@ _hcom() { $HCOM "$@" 2> >(grep --line-buffered -vE "$_TESS_NAG" >&2); }
 menu() {
 cat <<EOF
 
-  ${B}${M}tess${R} ${D}— your terminal command center${R}
+  ${B}${M}tess${R} ${D}— session orchestration for AI development${R}
+  ${D}every stream of work is an isolated session: spawn · watch · steer · ship${R}
 
-  ${B}${G}🌳 WORKTREES${R} ${D}(isolated copies of your repos to code in)${R}
+  ${B}${G}🌳 WORKTREES${R} ${D}(the isolation layer — one worktree per session)${R}
      ${C}tess new${R} ${D}[name]${R}     new feature worktree across your repos, opens in cmux
      ${C}tess new --all${R} ${D}name${R}  ...include optional repos too
      ${C}tess ls${R}             list your feature folders
@@ -68,7 +69,7 @@ cat <<EOF
   ${B}${G}📋 TODOS${R} ${D}(persistent coding checklist — every new session sees the open ones)${R}
      ${C}tess todo${R}            list open todos ${D}(${C}tess todo add${R} <text> · ${C}done${R} <id> · ${C}all${R})${R}
 
-  ${B}${G}🤖 AI AGENTS${R}
+  ${B}${G}🤖 SESSIONS${R} ${D}(worktree + agent + context — spawn one, resume any)${R}
      ${C}tess claude${R} ${D}[feat] ["task"] [--model M --effort E]${R}  spawn Claude — worktree auto-created, settings VERIFIED
      ${C}tess kimi${R} ${D}[feat] ["task"] …${R}   same for Kimi (own models + thinking level)
      ${C}tess think${R}          thinking partner — company brain, researches while you talk
@@ -109,7 +110,7 @@ cat <<EOF
      ${C}tess bonsai${R}         growing bonsai      ${C}tess dex${R}      random pokemon
      ${C}tess pipes${R}          pipes screensaver
 
-  ${B}${G}🧠 BRAIN${R} ${D}(your Lokus vault — on-demand, no token cost)${R}
+  ${B}${G}🧠 BRAIN${R} ${D}(optional · a markdown notes vault — on-demand, no token cost)${R}
      ${C}tess${R} ${D}<name>${R}        show a note — e.g. ${C}tess john${R} · ${C}tess acme${R}
      ${C}tess people${R}         roster — everyone, with a one-liner
      ${C}tess companies${R}      companies you track
@@ -121,7 +122,7 @@ cat <<EOF
      ${C}tess brief${R}          what's going on right now (NOW.md)
      ${C}tess company${R}        your hub note
 
-  ${B}${G}📱 LIFE${R} ${D}(macOS — needs permission, one-time)${R}
+  ${B}${G}📱 LIFE${R} ${D}(optional · macOS — needs permission, one-time)${R}
      ${C}tess calendar${R} ${D}[days]${R}  upcoming events
      ${C}tess messages${R} ${D}[who]${R}   recent iMessages/SMS
      ${C}tess chat${R} ${D}<name>${R}      full conversation + inline images
@@ -455,7 +456,10 @@ case "$cmd" in
     du -sh "$TESS_WORKTREE_ROOT"/*/ 2>/dev/null | sort -rh | head -6
     ;;
 
-  cheat)    bat "$HOME/cmux-cheatsheet.md" 2>/dev/null || cat "$HOME/cmux-cheatsheet.md" ;;
+  cheat)    # the closest thing to a cheatsheet is the bundled README
+    readme="$TESS_BIN/../README.md"
+    if [ -f "$readme" ]; then _show "$readme"
+    else echo "run ${C}tess${R} for the full menu, or ${C}tess help <command>${R} for one command."; fi ;;
 
   fix-files|fixfiles)   # permanently raise the macOS open-file limit (asks for your password)
     [ "$(uname)" = "Darwin" ] || { echo "macOS only."; exit 1; }
