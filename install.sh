@@ -45,6 +45,27 @@ _inject_primer() {   # append the primer to an agent instructions file (idempote
 [ -d "$HOME/.claude" ] || [ -d "$HOME/.kimi-code" ] || [ -d "$HOME/.codex" ] || \
   echo "  (no agent config dirs found — add agent-primer.md to your agent's instructions manually)"
 
+say "› surfacing your coding todos to every new session (SessionStart hook)"
+if [ -d "$HOME/.claude" ]; then
+  python3 - "$HOME/.claude/settings.json" <<'PY'
+import json, os, sys
+p = sys.argv[1]
+try:
+    d = json.load(open(p)) if os.path.exists(p) else {}
+except Exception:
+    print("  (couldn't parse settings.json — skipped; add a SessionStart hook running 'tess todo --hook')"); sys.exit(0)
+CMD = "command -v tess >/dev/null 2>&1 && tess todo --hook || exit 0"
+ss = d.setdefault("hooks", {}).setdefault("SessionStart", [])
+if any("tess todo --hook" in h.get("command", "") for g in ss for h in g.get("hooks", [])):
+    print("  already wired"); sys.exit(0)
+ss.append({"hooks": [{"type": "command", "command": CMD}]})
+json.dump(d, open(p, "w"), indent=2)
+print("  wired: open todos now show at the top of every new Claude session")
+PY
+else
+  echo "  (no ~/.claude — run 'tess todo --hook' from your agent's SessionStart hook manually)"
+fi
+
 case ":$PATH:" in
   *":$BIN:"*) ;;
   *) echo; echo "  ⚠ add this to your shell rc (~/.zshrc):"; echo "      export PATH=\"\$HOME/.local/bin:\$PATH\"";;
