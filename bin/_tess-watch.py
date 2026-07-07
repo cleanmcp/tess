@@ -64,7 +64,7 @@ def escalate(name, kind, detail, phone):
     lead = lead_name()
     hints = {"BLOCKED": f"approve it: tess approve {name}",
              "IDLE": f"next step: tess report {name} · tess tell {name} -- <instruction>",
-             "DIED": f"restart: tess hcom r {name}"}
+             "DIED": f"restart: tess resume — pick {name}"}
     msg = (f"⚠ ESCALATION: {name} is {kind} — {detail}\n{hints[kind]}")
     b64 = base64.b64encode(msg.encode()).decode()
     hcom("send", f"@{lead}", "--from", "tess-watch", "--intent", "request", "--base64", b64)

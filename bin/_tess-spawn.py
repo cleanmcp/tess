@@ -262,14 +262,14 @@ def main():
             if screen_has(name, "set model") or screen_has(name, model):
                 applied.append(f"model={model} ✓verified")
             else:
-                applied.append(f"model={model} ⚠ UNVERIFIED — check the pane (hcom term {name})")
+                applied.append(f"model={model} ⚠ UNVERIFIED — check the pane (tess agents)")
         elif model:  # kimi: -m at launch; the footer shows the display name
             from _tess_agents import wait_ready
             wait_ready(name, timeout=90, auto_trust=auto_trust)
             needle = kimi_display_name(model) or model.split("/")[-1]
             ok = needle.lower() in kimi_footer(name) or kimi_set_model(name, model)
             applied.append(f"model={model} ({needle}) " +
-                           ("✓verified" if ok else f"⚠ UNVERIFIED — check the pane (hcom term {name})"))
+                           ("✓verified" if ok else f"⚠ UNVERIFIED — check the pane (tess agents)"))
         if auto_mode:
             # proof, not hope: the running agent's footer must say auto mode
             from _tess_agents import wait_ready
@@ -277,13 +277,13 @@ def main():
             if "auto" in kimi_footer(name):
                 applied.append("auto mode ✓verified (footer)")
             else:
-                applied.append(f"auto mode ⚠ UNVERIFIED — check the pane (hcom term {name})")
+                applied.append(f"auto mode ⚠ UNVERIFIED — check the pane (tess agents)")
         if effort and tool == "claude":
             inject(name, f"/effort {effort}", raw=True, expect=None, **inject_kw)
             if screen_has(name, effort):
                 applied.append(f"effort={effort} ✓verified")
             else:
-                applied.append(f"effort={effort} ⚠ UNVERIFIED — check the pane (hcom term {name})")
+                applied.append(f"effort={effort} ⚠ UNVERIFIED — check the pane (tess agents)")
         elif effort:
             # kimi's effort control is its thinking toggle, shown in the footer
             from _tess_agents import wait_ready

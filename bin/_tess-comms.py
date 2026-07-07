@@ -15,7 +15,7 @@ import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
-from _tess_agents import agents_under, hcom, list_agents
+from _tess_agents import agents_under, hcom, list_agents, scrub
 
 WORKTREE_ROOT = (os.environ.get("TESS_WORKTREE_ROOT") or os.path.expanduser("~/worktrees")).rstrip("/")
 STATE_DIR = os.path.expanduser("~/.config/tess/state")
@@ -148,7 +148,7 @@ def cmd_inbox(args):
         if (ev.get("instance") or "").startswith("sys_") or frm in (lead, "bigboss"):
             continue
         msgs.append({"id": eid, "ts": ev.get("ts", ""), "from": frm,
-                     "intent": d.get("intent"), "text": d.get("text", "")})
+                     "intent": d.get("intent"), "text": scrub(d.get("text", ""))})
     msgs.sort(key=lambda m: m["id"])
 
     if as_json:
