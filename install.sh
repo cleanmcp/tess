@@ -78,6 +78,8 @@ echo
 [ "$MINIMAL" = "--minimal" ] && exit 0
 
 # ---------- optional, skippable steps ----------
+# Everything below is opt-in. The core (worktrees + the agent fleet) already works;
+# these add polish and the optional personal "brain/life" extras.
 echo "Optional setup (all skippable):"
 
 install_lokus() {
@@ -98,16 +100,19 @@ install_lokus() {
   rm -rf "$tmp"
 }
 
-if ask "0. Install Lokus (the recommended notes vault app for tess)?"; then
-  install_lokus
-fi
-
+# --- core polish ---
 if command -v brew >/dev/null 2>&1; then
   if ask "1. Install nice-to-have CLI tools (fzf zoxide lazygit eza bat ripgrep chafa)?"; then
     brew install fzf zoxide lazygit eza bat ripgrep chafa || true
   fi
 else
   echo "  (Homebrew not found — install from https://brew.sh to get the CLI extras)"
+fi
+
+if command -v uvx >/dev/null 2>&1 || command -v hcom >/dev/null 2>&1; then
+  echo "  ✓ fleet backend reachable (hcom via $(command -v hcom >/dev/null 2>&1 && echo hcom || echo 'uvx hcom')) — tess team/status/ship ready."
+else
+  echo "  (for the multi-agent fleet, install uv — https://docs.astral.sh/uv — so tess can run 'uvx hcom')"
 fi
 
 if ask "2. Set up OFFLINE local AI (ollama + a small model, ~2GB)? Needed for tess local/ask/voice."; then
@@ -126,13 +131,19 @@ if ask "3. Set up hands-free voice (whisper.cpp + sox + a speech model, ~150MB)?
       -o "$HOME/.local/share/whisper/ggml-base.en.bin"
 fi
 
+# --- optional personal "brain" (a notes vault) — skip entirely if you don't want it ---
+if ask "4. (Optional) Install Lokus, a markdown notes app, for the personal 'brain' features? Any markdown folder works — skip if you won't use tess for notes."; then
+  install_lokus
+fi
+
 cat <<'PERM'
 
-4. Permissions (do these yourself in System Settings — required for the "life" features):
+5. (Optional) Permissions for the macOS "life" features — do these yourself in System Settings.
+   Skip all of this if you only want the core (worktrees + fleet); nothing breaks.
    • Full Disk Access → add your terminal / cmux    (for tess messages, calls, calendar, read)
    • Automation → allow terminal → Messages          (for tess send)
    • Calendars (if prompted)                          (for tess calendar)
-   Skip if you don't want tess touching messages/calendar.
 
-Done. Run `tess` to see everything. Edit ~/.config/tess/config to point at your vault + repos.
+Done. Run `tess` to see everything.
+Edit ~/.config/tess/config to point at your repos (and, optionally, a notes vault).
 PERM

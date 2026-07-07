@@ -1,22 +1,23 @@
 # tess config — copy to ~/.config/tess/config and edit. Everything is optional (sane defaults).
 
-# ── Notes vault (Obsidian / Lokus / any markdown folder) ──
-TESS_VAULT="$HOME/Documents/tess-vault"     # your notes live here
-TESS_HUB="$TESS_VAULT/hub"                   # tess writes NOW / people / companies / notes here
-
-# ── Worktrees (optional; only if you use `tess new`/`wt`) ──
+# ── Worktrees & sessions (the core) ──
 TESS_WORKTREE_ROOT="$HOME/worktrees"         # feature worktrees are created here
 TESS_CORE="$TESS_WORKTREE_ROOT/repos"        # your source repos live here (one folder each)
 TESS_REPOS="app api"                         # default repos to fan out (space-separated)
 TESS_REPOS_ALL="app api web"                 # repos incl. optional ones (used by `tess new --all`)
 # TESS_GIT_REMOTE="https://github.com/your-org"  # optional: auto-clone missing repos from here
 
-# ── Startup (optional; for `tess startup`) ──
-TESS_STARTUP_OPEN="cmux Music Safari"        # apps to open at login
-TESS_STARTUP_QUIT=""                         # apps to quit at login (the flood, space-separated)
-
 # ── Fleet (optional; for tess team/watch/ship) ──
-# TESS_NOTIFY_CONTACT="Your Name"            # who `tess watch --phone` iMessages (contact name or number)
 # TESS_TEST_CMD="npm test"                   # run in each repo before `tess ship` pushes
-# TESS_IDLE_STABLE_SECS=20                   # how long an agent sits idle before escalation
+# TESS_IDLE_STABLE_SECS=20                   # how long a session sits idle before escalation
+# TESS_NOTIFY_CONTACT="Your Name"            # who `tess watch --phone` iMessages (contact name or number)
 # TESS_DEPLOY_DENY="Bash(gcloud run deploy:*),Bash(terraform apply:*)"  # override the deploy deny-list
+
+# ── Notes vault (OPTIONAL — the personal "brain" features) ──
+# Any markdown folder works (Obsidian / Lokus / plain files). Leave unset to skip entirely.
+# TESS_VAULT="$HOME/Documents/notes"          # your notes live here
+# TESS_HUB="$TESS_VAULT/hub"                   # tess writes NOW / people / companies / notes here
+
+# ── Startup (optional; for `tess startup`) ──
+# TESS_STARTUP_OPEN="cmux Music Safari"      # apps to open at login
+# TESS_STARTUP_QUIT=""                        # apps to quit at login (the flood, space-separated)
