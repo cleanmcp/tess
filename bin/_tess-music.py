@@ -50,7 +50,7 @@ def render_art(url):
     if not (TTY and url and shutil.which("chafa")):
         return
     try:
-        tmp = tempfile.mktemp(suffix=".jpg")
+        tmp = tempfile.mkstemp(suffix=".jpg")
         urllib.request.urlretrieve(url, tmp)
         subprocess.run(["chafa", "--size", "22x11", "--animate", "off", tmp])
     except Exception:

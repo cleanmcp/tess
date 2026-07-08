@@ -66,7 +66,7 @@ def show_image(path, mime):
         return f"{C.blue}🖼 {os.path.basename(p)}{C.r}  {C.grey}{p}{C.r}"
     render = p
     if (mime or "").endswith("heic") or p.lower().endswith(".heic"):
-        tmp = tempfile.mktemp(suffix=".png")
+        tmp = tempfile.mkstemp(suffix=".png")
         if subprocess.run(["sips", "-s", "format", "png", p, "--out", tmp], capture_output=True).returncode == 0:
             render = tmp
     try:

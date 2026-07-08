@@ -25,7 +25,7 @@ fi
 if [ -f "$HOME/.config/tess/config" ]; then
   _pre="$(env | grep '^TESS_' || true)"
   . "$HOME/.config/tess/config"
-  while IFS='=' read -r _k _v; do [ -n "$_k" ] && eval "$_k=\$_v"; done <<< "$_pre"
+  while IFS='=' read -r _k _v; do [ -n "$_k" ] && export "$_k=\$_v"; done <<< "$_pre"
 fi
 export TESS_VAULT TESS_HUB TESS_WORKTREE_ROOT TESS_CORE TESS_REPOS TESS_REPOS_ALL TESS_MAIN_BRANCH TESS_STARTUP_OPEN TESS_STARTUP_QUIT
 export TESS_NOTIFY_CONTACT="${TESS_NOTIFY_CONTACT:-}"   # phone pings (tess watch --phone)
@@ -506,7 +506,7 @@ PL
     echo "🎙  type or dictate (Wispr Flow) — Ctrl+C to stop."
     while printf "\n🎙  tess> " && read -r line; do
       [ -z "$line" ] && continue
-      python3 "$TESS_BIN/_tess-ask.py" $line
+      python3 "$TESS_BIN/_tess-ask.py" "$line"
     done
     ;;
   listen)   exec bash "$TESS_BIN/_tess-listen.sh" ;;   # hands-free wake word
