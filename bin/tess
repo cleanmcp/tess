@@ -84,6 +84,7 @@ cat <<EOF
   ${B}${G}🚁 THE FLEET${R} ${D}(drive MANY agents at once — you are @bigboss)${R}
      ${C}tess team${R} ${D}<spec.yaml>${R}   fan out N agents in one shot (prompts/models/roles) ${D}--dry-run first${R}
      ${C}tess orchestrate${R} ${D}"<goal>"${R}  hire an AI lead to run the fleet for you
+     ${C}tess boss${R}          your interactive orchestrator across all projects
      ${C}tess status${R}         fleet at a glance — BLOCKED agents first  ${D}(--json for scripts)${R}
      ${C}tess digest${R}         everyone's last report, merged
      ${C}tess report${R} ${D}<agent>${R}  one agent's FULL last message
@@ -260,7 +261,7 @@ case "$cmd" in
 esac
 
 # words that can never be feature/agent names (subcommands + obvious traps)
-TESS_RESERVED="help menu new ls list rm remove clean env branches path wt worktrees claude kimi agents agent loop resume r local offline small big med medium think partner post write brand ask voice listen git lg fish matrix bonsai pipes dex doctor disk cheat fix-files fixfiles update commands custom open app launch apps login startup brief hub person company add log people companies reminders todo todos followups calendar cal messages msg chat thread send text calls music read book readpos done inbox report digest status team orchestrate ship wait watch approve inject tell kill hcom diff spend all"
+TESS_RESERVED="help menu new ls list rm remove clean env branches path wt worktrees claude kimi agents agent loop resume r local offline small big med medium think partner post write brand boss ask voice listen git lg fish matrix bonsai pipes dex doctor disk cheat fix-files fixfiles update commands custom open app launch apps login startup brief hub person company add log people companies reminders todo todos followups calendar cal messages msg chat thread send text calls music read book readpos done inbox report digest status team orchestrate ship wait watch approve inject tell kill hcom diff spend all"
 export TESS_RESERVED
 _validname() {  # _validname <name> <what> — reject flag-like/reserved/path-unsafe names
   local n="${1:-}" what="${2:-name}"
@@ -420,6 +421,14 @@ case "$cmd" in
     # daily content partner: your voice + proven mechanics, learns your taste each session.
     exec claude --add-dir "$TESS_VAULT" \
       --append-system-prompt "$(cat "$HOME/.claude/modes/post.md")" "$@"
+    ;;
+  boss)
+    # interactive multi-project orchestrator: you talk to it, it routes/spawns/coordinates
+    # the fleet across ALL projects. Boots oriented; if no ask is passed, it runs its
+    # on-start orientation first so it knows the lay of the land before your first turn.
+    boss_boot="Boot: run your on-start orientation now (tess wt, tess ls, tess status, uvx hcom list, tess brief) to get oriented, then give me a tight board of the current lay of the land and wait for my first ask."
+    exec claude --add-dir "$TESS_VAULT" \
+      --append-system-prompt "$(cat "$HOME/.claude/modes/boss.md")" "${@:-$boss_boot}"
     ;;
 
   # tools -------------------------------------------------------------------
