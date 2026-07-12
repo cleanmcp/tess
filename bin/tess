@@ -75,6 +75,7 @@ cat <<EOF
      ${C}tess think${R}          thinking partner — company brain, researches while you talk
      ${C}tess post${R}           daily content partner — your voice, learns your taste
      ${C}tess resume${R}         resume ANY past Claude/Kimi session (any folder)
+     ${C}tess retry${R} ${D}<agent>${R}   re-run a dead/failed agent — same worktree, same prompt, same model
      ${C}tess local${R} ${D}[prompt]${R}  offline AI — no internet (also ${C}tess small${R} / ${C}tess big${R})
      ${C}tess ask${R} ${D}"<q>"${R}      ask in words — routes to the right thing + speaks it
      ${C}tess listen${R}         hands-free — just say "tess, <what you want>"
@@ -260,7 +261,7 @@ case "$cmd" in
 esac
 
 # words that can never be feature/agent names (subcommands + obvious traps)
-TESS_RESERVED="help menu new ls list rm remove clean env branches path wt worktrees claude kimi agents agent loop resume r local offline small big med medium think partner post write brand ask voice listen git lg fish matrix bonsai pipes dex doctor disk cheat fix-files fixfiles update commands custom open app launch apps login startup brief hub person company add log people companies reminders todo todos followups calendar cal messages msg chat thread send text calls music read book readpos done inbox report digest status team orchestrate ship wait watch approve inject tell kill hcom diff spend all"
+TESS_RESERVED="help menu new ls list rm remove clean env branches path wt worktrees claude kimi agents agent loop resume r retry local offline small big med medium think partner post write brand ask voice listen git lg fish matrix bonsai pipes dex doctor disk cheat fix-files fixfiles update commands custom open app launch apps login startup brief hub person company add log people companies reminders todo todos followups calendar cal messages msg chat thread send text calls music read book readpos done inbox report digest status team orchestrate ship wait watch approve inject tell kill hcom diff spend all"
 export TESS_RESERVED
 _validname() {  # _validname <name> <what> — reject flag-like/reserved/path-unsafe names
   local n="${1:-}" what="${2:-name}"
@@ -402,6 +403,7 @@ case "$cmd" in
     ;;
   loop)     exec bash "$TESS_BIN/_tess-loop.sh" "$@" ;;
   resume|r) exec python3 "$TESS_BIN/_tess-resume.py" ;;
+  retry)    exec python3 "$TESS_BIN/_tess-retry.py" "$@" ;;
   local|offline)   # offline AI (no internet). `tess local [small|big] [prompt]`
     case "${1:-}" in
       small|med|medium|big) t="$1"; shift; _localrun "$t" "$@" ;;
