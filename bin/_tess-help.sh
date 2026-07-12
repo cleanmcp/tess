@@ -36,6 +36,16 @@ case "$c" in
     "${D}e.g. tess kimi redis-cache \"profile the cache layer\" --model kimi-k2 --effort high${R}" \
     "${D}     tess claude . \"fix the failing test\" --model fable5${R}" ;;
   resume|r)  h "tess resume" "Pick from ALL past Claude/Kimi sessions (any folder) by AI summary; resumes it in its folder." ;;
+  retry)     h "tess retry <agent> [--dry-run] [--yes] [--model M] [--effort E] [--prompt P]" \
+    "Re-run a dead or failed agent in the same worktree with the same original prompt, tool, model, and budget." \
+    "Model and budget cap are recovered automatically from the spawn record. Effort and role flags (--readonly, --auto, --can-deploy) are NOT stored and must be re-supplied if needed." \
+    "The old (dead/registered) agent is killed first so a fresh name registers cleanly in the same tag group." \
+    "--prompt P    use this task instead of the recovered one (course correction)" \
+    "--model M     override the recovered model" \
+    "--effort E    set an effort level (not stored at original spawn time)" \
+    "--yes         skip the confirmation prompt (for scripts / non-interactive use)" \
+    "--dry-run     print the exact plan, do nothing" \
+    "${D}e.g. tess retry redis-1234  ·  tess retry redis-1234 --model claude-sonnet-5 --readonly${R}" ;;
   think|partner) h "tess think" "Thinking-partner mode: loads your company context, sounding-board (not idea-firehose), researches in the background." ;;
   post|brand|write) h "tess post" "Daily content partner for your personal brand. Learns your taste each session." ;;
   local|offline|small|big|med|medium) h "tess local | small | big [prompt]" \
