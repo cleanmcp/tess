@@ -129,6 +129,7 @@ cat <<EOF
      ${C}tess chat${R} ${D}<name>${R}      full conversation + inline images
      ${C}tess send${R} ${D}<name> -- <msg>${R}  send an iMessage
      ${C}tess calls${R}          recent call log
+     ${C}tess mail${R} ${D}[query]${R}     recent email — ${C}from${R} ${D}<who>${R} · ${C}read${R} ${D}<id>${R} · ${C}search${R} ${D}<text>${R}
      ${C}tess read${R} ${D}[title]${R}     reading companion for your current book
      ${C}tess music${R} ${D}[search <q>]${R}  Apple Music — art, fuzzy-play, catalog
 
@@ -261,7 +262,7 @@ case "$cmd" in
 esac
 
 # words that can never be feature/agent names (subcommands + obvious traps)
-TESS_RESERVED="help menu new ls list rm remove clean env branches path wt worktrees claude kimi agents agent loop resume r local offline small big med medium think partner post write brand boss ask voice listen git lg fish matrix bonsai pipes dex doctor disk cheat fix-files fixfiles update commands custom open app launch apps login startup brief hub person company add log people companies reminders todo todos followups calendar cal messages msg chat thread send text calls music read book readpos done inbox report digest status team orchestrate ship wait watch approve inject tell kill hcom diff spend all"
+TESS_RESERVED="help menu new ls list rm remove clean env branches path wt worktrees claude kimi agents agent loop resume r local offline small big med medium think partner post write brand boss ask voice listen git lg fish matrix bonsai pipes dex doctor disk cheat fix-files fixfiles update commands custom open app launch apps login startup brief hub person company add log people companies reminders todo todos followups calendar cal messages msg chat thread send text calls mail email music read book readpos done inbox report digest status team orchestrate ship wait watch approve inject tell kill hcom diff spend all"
 export TESS_RESERVED
 _validname() {  # _validname <name> <what> — reject flag-like/reserved/path-unsafe names
   local n="${1:-}" what="${2:-name}"
@@ -506,6 +507,7 @@ PL
   chat|thread)  python3 "$TESS_BIN/_tess-chat.py" "$@" ;;
   send|text)    exec bash "$TESS_BIN/_tess-send.sh" "$@" ;;
   calls)        python3 "$TESS_BIN/_tess-calls.py" ;;
+  mail|email)   python3 "$TESS_BIN/_tess-mail.py" "$@" ;;
   music)        exec python3 "$TESS_BIN/_tess-music.py" "$@" ;;
   read|book)    exec python3 "$TESS_BIN/_tess-read.py" "$@" ;;
   readpos)      python3 "$TESS_BIN/_tess-readpos.py" "$@" ;;

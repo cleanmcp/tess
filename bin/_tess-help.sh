@@ -107,6 +107,12 @@ case "$c" in
   send|text)    h "tess send <name> -- <message>" \
     "Send an iMessage. Ambiguous names show a picker (or, for agents, error with options)." "${D}e.g. tess send mom -- on my way${R}" ;;
   calls)     h "tess calls" "Recent call log with contact names." ;;
+  mail|email) h "tess mail [query] · from <name|addr> · read <id> · search <text>" \
+    "Recent email from the local Apple Mail store — read-only (never marks read, never sends)." \
+    "Bare/query = newest mail (sender/subject/snippet match; spam+trash hidden unless queried)." \
+    "read <id> prints the full body + attachments (ids show in the list). search scans subjects AND bodies." \
+    "Flags: --limit N · --json." \
+    "${D}e.g. tess mail from yuriy · tess mail read 838 · tess mail search \"pitch deck\" --limit 10${R}" ;;
   calendar|cal) h "tess calendar [days]" "Upcoming events (incl. recurring). Default 7 days." ;;
   read|book) h "tess read [title]" "Reading companion for your current Apple Book: recap + gist for your page, explains anything, takes notes." ;;
   music)     h "tess music [play|pause|next|prev|search <q>|<song>]" \
