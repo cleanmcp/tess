@@ -34,7 +34,7 @@ def strip_ansi(s):
 
 ROUTER = """You are the router for `tess`, the user's personal CLI. Read his request and reply with EXACTLY ONE line, nothing else:
 
-RUN <cmd>        run a tess command. Valid <cmd>: brief | people | companies | reminders | calls | calendar | messages <name> | read
+RUN <cmd>        run a tess command. Valid <cmd>: brief | people | companies | reminders | calls | calendar | messages <name> | mail <query> | read
 SESSION <name>   he's asking what's going on / status of a past coding session (e.g. "kimi chat fix", "the gcp session")
 NOTE <name>      he wants a note/person read (e.g. a person or topic)
 ANSWER <text>    it's a general question, a word/definition, or about a book he's reading — answer it yourself, briefly and plainly
@@ -46,7 +46,7 @@ try:
 except Exception:
     speak("Local model isn't reachable. Is ollama running?"); sys.exit(1)
 
-VALID_RUN = {"brief", "people", "companies", "reminders", "calls", "calendar", "messages", "read"}
+VALID_RUN = {"brief", "people", "companies", "reminders", "calls", "calendar", "messages", "mail", "read"}
 m = re.match(r"\s*(RUN|SESSION|NOTE|ANSWER)\b[:\-]?\s*(.*)", decision, re.I | re.S)
 verb = m.group(1).upper() if m else "ANSWER"
 rest = (m.group(2).strip() if m else decision).strip()

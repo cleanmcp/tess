@@ -29,6 +29,7 @@ if [ -f "$HOME/.config/tess/config" ]; then
 fi
 export TESS_VAULT TESS_HUB TESS_WORKTREE_ROOT TESS_CORE TESS_REPOS TESS_REPOS_ALL TESS_MAIN_BRANCH TESS_STARTUP_OPEN TESS_STARTUP_QUIT
 export TESS_NOTIFY_CONTACT="${TESS_NOTIFY_CONTACT:-}"   # phone pings (tess watch --phone)
+export TESS_MAIL_FROM="${TESS_MAIL_FROM:-}"             # default From account (tess mail send)
 
 # helpers live next to THIS script (resolve the symlink) — so a repo checkout
 # runs its own helpers, and the installed copy keeps one consistent version.
@@ -85,6 +86,7 @@ cat <<EOF
   ${B}${G}🚁 THE FLEET${R} ${D}(drive MANY agents at once — you are @bigboss)${R}
      ${C}tess team${R} ${D}<spec.yaml>${R}   fan out N agents in one shot (prompts/models/roles) ${D}--dry-run first${R}
      ${C}tess orchestrate${R} ${D}"<goal>"${R}  hire an AI lead to run the fleet for you
+     ${C}tess boss${R}          your interactive orchestrator across all projects
      ${C}tess status${R}         fleet at a glance — BLOCKED agents first  ${D}(--json for scripts)${R}
      ${C}tess digest${R}         everyone's last report, merged
      ${C}tess report${R} ${D}<agent>${R}  one agent's FULL last message
@@ -129,6 +131,7 @@ cat <<EOF
      ${C}tess chat${R} ${D}<name>${R}      full conversation + inline images
      ${C}tess send${R} ${D}<name> -- <msg>${R}  send an iMessage
      ${C}tess calls${R}          recent call log
+     ${C}tess mail${R} ${D}[query]${R}     email — ${C}read${R} ${D}<id>${R} · ${C}search${R} · ${C}send${R}/${C}reply${R} ${D}(confirmed)${R} · ${C}flag${R}/${C}archive${R}/${C}move${R}…
      ${C}tess read${R} ${D}[title]${R}     reading companion for your current book
      ${C}tess music${R} ${D}[search <q>]${R}  Apple Music — art, fuzzy-play, catalog
 
@@ -423,6 +426,14 @@ case "$cmd" in
     exec claude --add-dir "$TESS_VAULT" \
       --append-system-prompt "$(cat "$HOME/.claude/modes/post.md")" "$@"
     ;;
+  boss)
+    # interactive multi-project orchestrator: you talk to it, it routes/spawns/coordinates
+    # the fleet across ALL projects. Boots oriented; if no ask is passed, it runs its
+    # on-start orientation first so it knows the lay of the land before your first turn.
+    boss_boot="Boot: run your on-start orientation now (tess wt, tess ls, tess status, uvx hcom list, tess brief) to get oriented, then give me a tight board of the current lay of the land and wait for my first ask."
+    exec claude --add-dir "$TESS_VAULT" \
+      --append-system-prompt "$(cat "$HOME/.claude/modes/boss.md")" "${@:-$boss_boot}"
+    ;;
 
   # tools -------------------------------------------------------------------
   git|lg)   exec lazygit ;;
@@ -499,6 +510,7 @@ PL
   chat|thread)  python3 "$TESS_BIN/_tess-chat.py" "$@" ;;
   send|text)    exec bash "$TESS_BIN/_tess-send.sh" "$@" ;;
   calls)        python3 "$TESS_BIN/_tess-calls.py" ;;
+  mail|email)   python3 "$TESS_BIN/_tess-mail.py" "$@" ;;
   music)        exec python3 "$TESS_BIN/_tess-music.py" "$@" ;;
   read|book)    exec python3 "$TESS_BIN/_tess-read.py" "$@" ;;
   readpos)      python3 "$TESS_BIN/_tess-readpos.py" "$@" ;;
