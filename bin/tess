@@ -29,6 +29,7 @@ if [ -f "$HOME/.config/tess/config" ]; then
 fi
 export TESS_VAULT TESS_HUB TESS_WORKTREE_ROOT TESS_CORE TESS_REPOS TESS_REPOS_ALL TESS_MAIN_BRANCH TESS_STARTUP_OPEN TESS_STARTUP_QUIT
 export TESS_NOTIFY_CONTACT="${TESS_NOTIFY_CONTACT:-}"   # phone pings (tess watch --phone)
+export TESS_MAIL_FROM="${TESS_MAIL_FROM:-}"             # default From account (tess mail send)
 
 # helpers live next to THIS script (resolve the symlink) — so a repo checkout
 # runs its own helpers, and the installed copy keeps one consistent version.
@@ -129,7 +130,7 @@ cat <<EOF
      ${C}tess chat${R} ${D}<name>${R}      full conversation + inline images
      ${C}tess send${R} ${D}<name> -- <msg>${R}  send an iMessage
      ${C}tess calls${R}          recent call log
-     ${C}tess mail${R} ${D}[query]${R}     recent email — ${C}from${R} ${D}<who>${R} · ${C}read${R} ${D}<id>${R} · ${C}search${R} ${D}<text>${R}
+     ${C}tess mail${R} ${D}[query]${R}     email — ${C}read${R} ${D}<id>${R} · ${C}search${R} · ${C}send${R}/${C}reply${R} ${D}(confirmed)${R} · ${C}flag${R}/${C}archive${R}/${C}move${R}…
      ${C}tess read${R} ${D}[title]${R}     reading companion for your current book
      ${C}tess music${R} ${D}[search <q>]${R}  Apple Music — art, fuzzy-play, catalog
 

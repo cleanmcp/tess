@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
-"""tess mail [query] — recent email from the local Apple Mail store, with contact names.
-Subcommands: from <name|addr> · read <id> · search <text>. Flags: --limit N · --json.
-Read-only (never marks read, never sends). Needs Full Disk Access."""
-import os, sys, re, glob, json, email, email.policy, sqlite3, datetime
+"""tess mail [query] — email from the local Apple Mail store, with contact names.
+Read:    [query] · from <name|addr> · read <id> · search <text>
+Actions: send <who> -- <subj> <body> · reply <id> -- <text> · mark <id> read|unread ·
+         flag <id> [color|off] · archive <id> · move <id> <mailbox> · delete <id>
+Flags: --limit N · --json · --from <addr>. Reads hit the sqlite store directly (never
+written); actions go through Mail.app via AppleScript. send/reply/delete always
+confirm with a human — non-interactive calls get the exact command to run instead."""
+import os, sys, re, glob, json, email, email.policy, sqlite3, subprocess, datetime
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _tess_common import C, resolve, short, contacts_map  # noqa: E402
 
@@ -246,18 +250,23 @@ def body_of(msg):
 
 
 # ---------------- commands ----------------
-def cmd_read(rid):
+def get_row(rid, verb="read"):
     try:
         rid = int(rid)
     except (TypeError, ValueError):
-        print("usage: tess mail read <id>   (ids come from: tess mail)")
+        print(f"usage: tess mail {verb} <id>   (ids come from: tess mail)")
         sys.exit(2)
     r = CON.execute(SQL.format(extra="AND m.ROWID = ?").replace("ORDER BY m.date_received DESC", ""),
                     (rid,)).fetchone()
     if not r:
-        print(f"no message with id {rid}. (ids come from: tess mail)")
+        print(f"no message with id {rid}. (ids come from: tess mail — they refresh after moves)")
         sys.exit(1)
-    row = mkrow(r)
+    return mkrow(r)
+
+
+def cmd_read(rid):
+    row = get_row(rid)
+    rid = row["id"]
     path, partial = find_emlx(rid)
     body, atts, to, cc = "", [], "", ""
     if path:
@@ -352,14 +361,353 @@ def cmd_from(who):
     show_list(fetch(f, include_hidden=True), f"mail · from {who}")
 
 
+# ---------------- actions (AppleScript against Mail.app) ----------------
+# The sqlite store is NEVER written — every mutation goes through Mail.app so it
+# stays consistent (and syncs to the server). Reads stay on the fast sqlite path.
+FLAG_COLORS = {"red": 0, "orange": 1, "yellow": 2, "green": 3, "blue": 4,
+               "purple": 5, "gray": 6, "grey": 6}
+
+FIND_BLOCK = '''
+    set theAcct to missing value
+    repeat with a in accounts
+      set eaddrs to (get email addresses of a)
+      if eaddrs contains acctAddr then
+        set theAcct to a
+        exit repeat
+      end if
+    end repeat
+    if theAcct is missing value then return "ERR:no account in Mail.app for " & acctAddr
+    -- gmail system boxes (All Mail…) can't be name-addressed at account level, so
+    -- work with mailbox OBJECTS throughout; INBOX is searched first.
+    set allBoxes to (get mailboxes of theAcct)
+    set ordered to {}
+    repeat with mb in allBoxes
+      if (name of mb) is "INBOX" then
+        set beginning of ordered to mb
+      else
+        set end of ordered to mb
+      end if
+    end repeat
+    set theMsg to missing value
+    set foundBox to missing value
+    repeat with mb in ordered
+      try
+        set hits to (messages of mb whose message id is mid)
+        if (count of hits) > 0 then
+          set theMsg to item 1 of hits
+          set foundBox to mb
+          exit repeat
+        end if
+      end try
+    end repeat
+    if theMsg is missing value then return "ERR:message not found in Mail.app (still syncing? try again)"
+'''
+
+ACT_SCRIPT = '''on run argv
+  set acctAddr to item 1 of argv
+  set mid to item 2 of argv
+  set act to item 3 of argv
+  set arg1 to item 4 of argv
+  tell application "Mail"
+''' + FIND_BLOCK + '''
+    if act is "mark" then
+      set read status of theMsg to (arg1 is "read")
+      return "OK:marked " & arg1
+    else if act is "flag" then
+      if arg1 is "off" then
+        set flagged status of theMsg to false
+        return "OK:flag removed"
+      else
+        set flag index of theMsg to (arg1 as integer)
+        set flagged status of theMsg to true
+        return "OK:flagged"
+      end if
+    else if act is "delete" then
+      delete theMsg
+      return "OK:moved to Trash"
+    else if act is "move" or act is "archive" then
+      set targets to {arg1}
+      if act is "archive" then set targets to {"Archive", "All Mail"}
+      repeat with nm in targets
+        repeat with mb in allBoxes
+          if (name of mb) is (nm as string) then
+            if (name of foundBox) is (nm as string) then return "OK:already in " & nm
+            move theMsg to mb
+            return "OK:moved to " & (name of mb)
+          end if
+        end repeat
+      end repeat
+      return "ERR:no mailbox named '" & arg1 & "' in " & acctAddr & " (see: tess mail boxes)"
+    end if
+    return "ERR:unknown action " & act
+  end tell
+end run'''
+
+SEND_SCRIPT = '''on run argv
+  tell application "Mail"
+    set outMsg to make new outgoing message with properties ¬
+      {subject:(item 2 of argv), content:(item 3 of argv), visible:false}
+    tell outMsg
+      make new to recipient at end of to recipients with properties {address:(item 1 of argv)}
+      set sender to (item 4 of argv)
+    end tell
+    send outMsg
+  end tell
+  return "OK:sent"
+end run'''
+
+REPLY_SCRIPT = '''on run argv
+  set acctAddr to item 1 of argv
+  set mid to item 2 of argv
+  set replyTxt to item 3 of argv
+  set fromAddr to item 4 of argv
+  tell application "Mail"
+''' + FIND_BLOCK + '''
+    set r to reply theMsg without opening window
+    set content of r to replyTxt
+    if fromAddr is not "" then set sender of r to fromAddr
+    send r
+    return "OK:replied"
+  end tell
+end run'''
+
+BOXES_SCRIPT = '''on run argv
+  set acctAddr to item 1 of argv
+  set out to ""
+  tell application "Mail"
+    repeat with a in accounts
+      set eaddrs to (get email addresses of a)
+      set e to item 1 of eaddrs
+      if acctAddr is "" or eaddrs contains acctAddr then
+        repeat with mb in (mailboxes of a)
+          set out to out & e & "\\t" & (name of mb) & "\\n"
+        end repeat
+      end if
+    end repeat
+  end tell
+  return out
+end run'''
+
+
+def osa(script, *args):
+    """Run an AppleScript with argv (injection-safe). -> stdout, or exits with guidance."""
+    try:
+        p = subprocess.run(["osascript", "-e", script, *args],
+                           capture_output=True, text=True, timeout=90)
+    except subprocess.TimeoutExpired:
+        print("Mail.app didn't respond in 90s — open it once, then retry."); sys.exit(1)
+    err = (p.stderr or "").strip()
+    if p.returncode != 0 or err:
+        if "-1743" in err or "Not authorized" in err:
+            print("Mail actions blocked — allow Automation (cmux → Mail):")
+            print("  System Settings → Privacy & Security → Automation → cmux → enable Mail.")
+        elif "-600" in err or "-10810" in err:
+            print("couldn't talk to Mail.app — open Mail once, then retry.")
+        else:
+            print(f"Mail.app error: {err or 'unknown'}")
+        sys.exit(1)
+    return (p.stdout or "").strip()
+
+
+def message_id_of(rid):
+    path, _ = find_emlx(rid)
+    if not path:
+        print(f"[{rid}] has no local message file — can't act on it."); sys.exit(1)
+    try:
+        mid = (parse_emlx(path).get("Message-ID") or "").strip().strip("<>")
+    except Exception:
+        mid = ""
+    if not mid:
+        print(f"[{rid}] has no Message-ID header — can't act on it."); sys.exit(1)
+    return mid
+
+
+def act_result(res, row, action):
+    if res.startswith("ERR:"):
+        if AS_JSON:
+            print(json.dumps({"ok": False, "action": action, "id": row["id"], "error": res[4:]}))
+        else:
+            print(f"✗ {res[4:]}")
+        sys.exit(1)
+    detail = res[3:] if res.startswith("OK:") else res
+    if AS_JSON:
+        print(json.dumps({"ok": True, "action": action, "id": row["id"], "detail": detail}))
+    else:
+        print(f"✓ {detail} — [{row['id']}] {short(row['subject'], 50)}")
+        if action in ("archive", "move", "delete"):
+            print(f"{C.grey}  (ids can change after a move — re-run `tess mail` for fresh ones){C.r}")
+
+
+def confirm_or_die(what, resume_cmd):
+    """send/reply/delete are irreversible — a HUMAN must approve, always."""
+    if not sys.stdin.isatty():
+        print(f"\n{what} needs a human — run it yourself:")
+        print(f"  {resume_cmd}")
+        sys.exit(2)
+    try:
+        ans = input(f"{what}? [y/N] ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        print("cancelled."); sys.exit(0)
+    if ans not in ("y", "yes"):
+        print("cancelled."); sys.exit(0)
+
+
+def cmd_simple_action(rid, action, arg=""):
+    row = get_row(rid, action)
+    mid = message_id_of(row["id"])
+    if action == "delete":
+        print(f"\n  {C.red}delete{C.r} [{row['id']}] {C.cyan}{row['from_name']}{C.r} — "
+              f"{short(row['subject'], 60)}  {C.grey}({row['account']}){C.r}")
+        confirm_or_die("delete (→ Trash)", f'tess mail delete {row["id"]}')
+    act_result(osa(ACT_SCRIPT, row["account"], mid, action, str(arg)), row, action)
+
+
+def mail_account_emails():
+    """live account emails from Mail.app (newline list, first address per account first)."""
+    return [l for l in osa(BOXES_SCRIPT, "").splitlines() if l.strip()]
+
+
+def pick_sender(explicit):
+    """--from substring, else $TESS_MAIL_FROM, else the account holding the most local mail."""
+    live = []
+    for l in mail_account_emails():
+        e = l.split("\t")[0].strip().lower()
+        if e and e not in live:
+            live.append(e)
+    if not explicit:
+        cfg = os.environ.get("TESS_MAIL_FROM", "").strip().lower()
+        if cfg:
+            hits = [e for e in live if cfg in e]
+            if len(hits) == 1:
+                return hits[0]
+    if explicit:
+        hits = [e for e in live if explicit.lower() in e]
+        if len(hits) == 1:
+            return hits[0]
+        print(f"--from '{explicit}' matches {len(hits)} accounts:" if hits else
+              f"--from '{explicit}' matches no Mail account:")
+        for e in live:
+            print(f"  - {e}")
+        sys.exit(2)
+    counts = {}
+    for url, tot in CON.execute("SELECT url, total_count FROM mailboxes"):
+        _, acct = mbox_info(url)
+        e = ACCTS.get(acct, "")
+        if e in live:
+            counts[e] = counts.get(e, 0) + (tot or 0)
+    return max(counts, key=counts.get) if counts else (live[0] if live else None)
+
+
+def resolve_recipient(q):
+    """name/addr -> (display, address); ambiguity: picker on a TTY, guidance otherwise."""
+    if "@" in q:
+        return q, q.strip()
+    ql, cands = q.lower(), {}
+    for a, n in contacts_map().items():          # Contacts first…
+        if "@" in a and ql in n.lower():
+            cands[a.lower()] = (n, a)
+    for a, cmt in CON.execute("SELECT DISTINCT address, comment FROM addresses"):  # …then people who've mailed him
+        if not a or "@" not in a:
+            continue
+        disp = cmt or resolve(a)
+        if disp and ql in disp.lower() and a.lower() not in cands:
+            cands[a.lower()] = (disp if disp != a else a, a)
+    out = sorted(cands.values(), key=lambda x: (x[0].lower() != ql, x[0].lower()))
+    if not out:
+        print(f"no email address found for '{q}' (Contacts + mail history). Use the address itself.")
+        sys.exit(1)
+    if len(out) == 1:
+        return out[0]
+    if not sys.stdin.isatty():
+        print(f"ambiguous: '{q}' matches multiple addresses:")
+        for n, a in out[:8]:
+            print(f"  - {n} <{a}>")
+        print(f're-run with the exact address, e.g.  tess mail send "{out[0][1]}" -- <subject> <body>')
+        sys.exit(2)
+    print(f"multiple matches for '{q}':")
+    for i, (n, a) in enumerate(out[:8], 1):
+        print(f"  {i}. {n}  ({a})")
+    pick = input("pick # (Enter to cancel): ").strip()
+    if not pick.isdigit() or not (1 <= int(pick) <= min(8, len(out))):
+        print("cancelled."); sys.exit(0)
+    return out[int(pick) - 1]
+
+
+def cmd_send(who, subj, body):
+    name, addr = resolve_recipient(who)
+    sender = pick_sender(FROM_ADDR or None)
+    if not sender:
+        print("no account found in Mail.app to send from."); sys.exit(1)
+    print(f"\n  {C.bold}{C.mag}✉  new mail{C.r}")
+    print(f"  {C.grey}from:{C.r} {sender}")
+    print(f"  {C.grey}to:{C.r}   {C.cyan}{name}{C.r} {C.grey}<{addr}>{C.r}" if name != addr
+          else f"  {C.grey}to:{C.r}   {C.cyan}{addr}{C.r}")
+    print(f"  {C.grey}subj:{C.r} {subj}")
+    print(f"  {C.grey}{'─' * 50}{C.r}")
+    print("\n".join("  " + l for l in body.splitlines()))
+    print()
+    flagpart = f' --from {sender}' if FROM_ADDR else ""
+    confirm_or_die("send", f'tess mail send{flagpart} "{addr}" -- "{subj}" "{body}"')
+    res = osa(SEND_SCRIPT, addr, subj, body, sender)
+    if AS_JSON:
+        print(json.dumps({"ok": res == "OK:sent", "action": "send", "to": addr,
+                          "from": sender, "subject": subj}))
+    else:
+        print(f"✓ sent to {name} <{addr}> from {sender}" if res == "OK:sent" else f"✗ {res}")
+
+
+def cmd_reply(rid, text):
+    row = get_row(rid, "reply")
+    mid = message_id_of(row["id"])
+    sender = pick_sender(FROM_ADDR) if FROM_ADDR else ""   # default: Mail replies from the thread's account
+    print(f"\n  {C.bold}{C.mag}↩  reply{C.r} to [{row['id']}] {C.cyan}{row['from_name']}{C.r} "
+          f"{C.grey}<{row['from_addr']}>{C.r}")
+    print(f"  {C.grey}subj:{C.r} Re: {row['subject']}")
+    print(f"  {C.grey}via:{C.r}  {sender or row['account'] + ' (thread account)'}")
+    print(f"  {C.grey}{'─' * 50}{C.r}")
+    print("\n".join("  " + l for l in text.splitlines()))
+    print()
+    confirm_or_die("send reply", f'tess mail reply {row["id"]} -- "{text}"')
+    res = osa(REPLY_SCRIPT, row["account"], mid, text, sender)
+    if AS_JSON:
+        print(json.dumps({"ok": res == "OK:replied", "action": "reply", "id": row["id"],
+                          "to": row["from_addr"]}))
+    else:
+        print(f"✓ replied to {row['from_name']}" if res == "OK:replied" else f"✗ {res}")
+
+
+def cmd_boxes():
+    rows = [l.split("\t") for l in mail_account_emails() if "\t" in l]
+    if AS_JSON:
+        print(json.dumps([{"account": a, "mailbox": b} for a, b in rows], indent=2))
+        return
+    print(f"\n  {C.bold}{C.mag}Mail.app mailboxes{C.r}\n")
+    last = None
+    for a, b in rows:
+        if a != last:
+            print(f"  {C.cyan}{a}{C.r}"); last = a
+        print(f"    {b}")
+    print()
+
+
 # ---------------- args ----------------
-LIMIT, AS_JSON, rest = 25, False, []
+# flags live BEFORE `--`; everything after `--` is content (subject/body/reply text)
 argv = sys.argv[1:]
+post = []
+if "--" in argv:
+    cut = argv.index("--")
+    argv, post = argv[:cut], argv[cut + 1:]
+
+LIMIT, AS_JSON, FROM_ADDR, rest = 25, False, "", []
 i = 0
 while i < len(argv):
     a = argv[i]
     if a == "--json":
         AS_JSON = True
+    elif a == "--from" and i + 1 < len(argv) or a.startswith("--from="):
+        FROM_ADDR = a.split("=", 1)[1] if "=" in a else argv[i + 1]
+        if "=" not in a:
+            i += 1
     elif a == "--limit" and i + 1 < len(argv) or a.startswith("--limit="):
         v = a.split("=", 1)[1] if "=" in a else argv[i + 1]
         if "=" not in a:
@@ -379,10 +727,48 @@ elif sub == "search":
     if len(rest) < 2:
         print("usage: tess mail search <text>"); sys.exit(2)
     cmd_search(" ".join(rest[1:]))
-elif sub == "from":
-    if len(rest) < 2:
-        print("usage: tess mail from <name or address>"); sys.exit(2)
+elif sub == "from" and len(rest) > 1:
     cmd_from(" ".join(rest[1:]))
+elif sub == "from":
+    print("usage: tess mail from <name or address>"); sys.exit(2)
+elif sub == "send":
+    who = " ".join(rest[1:]).strip()
+    if not who or not post:
+        print('usage: tess mail send <name|addr> -- "<subject>" "<body>"   [--from <acct>]')
+        sys.exit(2)
+    cmd_send(who, post[0], " ".join(post[1:]) if len(post) > 1 else "")
+elif sub == "reply":
+    if len(rest) < 2 or not post:
+        print('usage: tess mail reply <id> -- "<text>"'); sys.exit(2)
+    cmd_reply(rest[1], " ".join(post))
+elif sub == "mark":
+    state = rest[2].lower() if len(rest) > 2 else "read"
+    if len(rest) < 2 or state not in ("read", "unread"):
+        print("usage: tess mail mark <id> read|unread"); sys.exit(2)
+    cmd_simple_action(rest[1], "mark", state)
+elif sub == "unread":
+    if len(rest) < 2:
+        print("usage: tess mail unread <id>"); sys.exit(2)
+    cmd_simple_action(rest[1], "mark", "unread")
+elif sub == "flag":
+    color = rest[2].lower() if len(rest) > 2 else "red"
+    if len(rest) < 2 or (color != "off" and color not in FLAG_COLORS):
+        print(f"usage: tess mail flag <id> [{'|'.join(list(FLAG_COLORS)[:7])}|off]"); sys.exit(2)
+    cmd_simple_action(rest[1], "flag", color if color == "off" else FLAG_COLORS[color])
+elif sub == "archive":
+    if len(rest) < 2:
+        print("usage: tess mail archive <id>"); sys.exit(2)
+    cmd_simple_action(rest[1], "archive")
+elif sub == "move":
+    if len(rest) < 3:
+        print("usage: tess mail move <id> <mailbox>   (see: tess mail boxes)"); sys.exit(2)
+    cmd_simple_action(rest[1], "move", " ".join(rest[2:]))
+elif sub == "delete":
+    if len(rest) < 2:
+        print("usage: tess mail delete <id>"); sys.exit(2)
+    cmd_simple_action(rest[1], "delete")
+elif sub == "boxes":
+    cmd_boxes()
 else:
     q = " ".join(rest).strip()
     ql = q.lower()

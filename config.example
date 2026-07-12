@@ -11,6 +11,7 @@ TESS_REPOS_ALL="app api web"                 # repos incl. optional ones (used b
 # TESS_TEST_CMD="npm test"                   # run in each repo before `tess ship` pushes
 # TESS_IDLE_STABLE_SECS=20                   # how long a session sits idle before escalation
 # TESS_NOTIFY_CONTACT="Your Name"            # who `tess watch --phone` iMessages (contact name or number)
+# TESS_MAIL_FROM="you@work.com"              # default From account for `tess mail send` (else: most-mail account)
 # TESS_DEPLOY_DENY="Bash(gcloud run deploy:*),Bash(terraform apply:*)"  # override the deploy deny-list
 
 # ── Notes vault (OPTIONAL — the personal "brain" features) ──
