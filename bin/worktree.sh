@@ -21,7 +21,7 @@ set -euo pipefail
 if [ -f "$HOME/.config/tess/config" ]; then
   _pre="$(env | grep '^TESS_' || true)"
   . "$HOME/.config/tess/config"
-  while IFS='=' read -r _k _v; do [ -n "$_k" ] && eval "$_k=\$_v"; done <<< "$_pre"
+  while IFS='=' read -r _k _v; do [ -n "$_k" ] && export "$_k=\$_v"; done <<< "$_pre"
 fi
 
 # --- config ------------------------------------------------------------------
