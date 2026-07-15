@@ -72,12 +72,22 @@ esac
 # create mode — run the real script, then open the new feature folder in cmux
 "$SCRIPT" "$@"
 
-# figure out the feature name (first arg that isn't a flag or a flag's value) and open it
-feat=""; _skip=0
+# open the created feature folder. With the positional repo form the feature is
+# the SECOND positional — so of the first two positionals, open whichever exists
+# under the worktree root with the newest mtime (i.e. the one just created).
+p1=""; p2=""; _skip=0
 for a in "$@"; do
   [ "$_skip" = 1 ] && { _skip=0; continue; }
-  case "$a" in --all|--web|--fleet) ;; --repo) _skip=1 ;; *) feat="$a"; break ;; esac
+  case "$a" in --all|--web|--fleet) ;; --repo) _skip=1 ;; *)
+    if [ -z "$p1" ]; then p1="$a"; elif [ -z "$p2" ]; then p2="$a"; break; fi ;;
+  esac
 done
-if [ -n "$feat" ] && [ -d "$WASH/$feat" ]; then
+feat=""; best=0
+for c in "$p1" "$p2"; do
+  [ -n "$c" ] && [ -d "$WASH/$c" ] || continue
+  m="$(stat -f %m "$WASH/$c" 2>/dev/null || echo 0)"
+  [ "$m" -gt "$best" ] && { best="$m"; feat="$c"; }
+done
+if [ -n "$feat" ]; then
   cmux open "$WASH/$feat" >/dev/null 2>&1 && echo "→ opened $WASH/$feat in cmux" || true
 fi

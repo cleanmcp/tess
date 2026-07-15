@@ -90,7 +90,10 @@ Sessions ride on git worktrees. You can also drive them directly for multi-repo 
 ```
 tess new <feature>           worktree(s) for the repo you're standing in — or, outside a repo, your configured set
 tess new --all <feature>     include optional repos
-tess new --repo <r> <feat>   target any repo on disk by name (tess repos lists the index)
+tess new <repo> <feature>    any repo on disk by name — tess maps them all (tess repos) and, when
+                             several copies share a name, picks the one you actually work in
+                             (zoxide frecency + git activity). No macOS permission prompts: without
+                             Full Disk Access it skips Desktop/Documents/Downloads instead of asking.
 tess ls | rm | env | clean | branches | wt | path
 ```
 

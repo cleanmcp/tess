@@ -134,16 +134,29 @@ while [ $# -gt 0 ]; do
   esac
 done
 set -- ${_args[@]+"${_args[@]}"}
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+# positional repo form: `tess new <repo> <feature> [base]` — kicks in only when the
+# first arg EXACTLY matches a known repo name (see: tess repos). Otherwise the first
+# arg is a feature name, exactly as before.
+if [ -z "$REPO_PICK" ] && [ "$FORCE_FLEET" -eq 0 ] && [ $# -ge 2 ]; then
+  _prc=0
+  _pout="$(bash "$SCRIPT_DIR/_tess-repos.sh" pick "$1" 2>/dev/null)" || _prc=$?
+  _pname="$(printf '%s' "$_pout" | head -1 | cut -f1 | tr '[:upper:]' '[:lower:]')"
+  if { [ "$_prc" -eq 0 ] || [ "$_prc" -eq 3 ]; } && [ "$_pname" = "$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')" ]; then
+    REPO_PICK="$1"; shift
+  fi
+fi
+
 FEATURE="${1:-}"
 BASE="${2:-$DEFAULT_BASE}"   # base branch to cut from (default: main)
-[ -z "$FEATURE" ] && { c_red "usage: $0 [--repo <name>|--fleet] <feature-name> [base-branch]"; exit 1; }
+[ -z "$FEATURE" ] && { c_red "usage: $0 [--repo <name>|--fleet] [<repo>] <feature-name> [base-branch]"; exit 1; }
 check_name "$FEATURE"
 
-# Pick target repos: explicit --repo beats the repo you're standing in (when it
-# isn't part of the configured fleet), which beats the TESS_REPOS fan-out.
-# Standing inside a fleet repo still fans out the whole fleet — same-feature
-# branches across paired repos is the point of the fleet.
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# Pick target repos: explicit repo (flag or positional) beats the repo you're
+# standing in (when it isn't part of the configured fleet), which beats the
+# TESS_REPOS fan-out. Standing inside a fleet repo still fans out the whole
+# fleet — same-feature branches across paired repos is the point of the fleet.
 TARGETS=()   # "name<TAB>src" pairs
 _fleet_targets() {
   if [ "${#REPOS[@]}" -eq 0 ] || [ -z "${REPOS[0]:-}" ]; then
@@ -155,22 +168,24 @@ _fleet_targets() {
 if [ -n "$REPO_PICK" ]; then
   if [ -d "$REPO_PICK" ] && git -C "$REPO_PICK" rev-parse --git-dir >/dev/null 2>&1; then
     _p="$(cd "$REPO_PICK" && git rev-parse --show-toplevel)"   # --repo <path> form
+    c_blue "(repo: $_p)"
     TARGETS+=("$(basename "$_p")"$'\t'"$_p")
   else
-    _hits=(); while IFS= read -r _l; do [ -n "$_l" ] && _hits+=("$_l"); done \
-      < <(bash "$SCRIPT_DIR/_tess-repos.sh" find "$REPO_PICK" 2>/dev/null)
-    if [ "${#_hits[@]}" -eq 0 ]; then
+    _prc=0
+    _pout="$(bash "$SCRIPT_DIR/_tess-repos.sh" pick "$REPO_PICK" 2>/dev/null)" || _prc=$?
+    if [ "$_prc" -eq 1 ] || [ -z "$_pout" ]; then
       c_red "no repo matching '$REPO_PICK' — see: tess repos"; exit 1
-    elif [ "${#_hits[@]}" -gt 1 ] && [ -t 0 ] && command -v fzf >/dev/null 2>&1; then
-      sel="$(printf '%s\n' "${_hits[@]}" | fzf --prompt 'repo ▸ ' --delimiter '\t')" || true
+    elif [ "$_prc" -eq 3 ] && [ -t 0 ] && command -v fzf >/dev/null 2>&1; then
+      sel="$(printf '%s\n' "$_pout" | fzf --prompt 'repo ▸ ' --delimiter '\t')" || true
       [ -z "${sel:-}" ] && exit 0
       TARGETS+=("$sel")
-    elif [ "${#_hits[@]}" -gt 1 ]; then
-      c_red "'$REPO_PICK' matches ${#_hits[@]} repos:"
-      printf '%s\n' "${_hits[@]}" | sed $'s/\t/  ->  /;s/^/  /' >&2
+    elif [ "$_prc" -eq 3 ]; then
+      c_red "'$REPO_PICK' matches several repos:"
+      printf '%s\n' "$_pout" | sed $'s/\t/  ->  /;s/^/  /' >&2
       c_red "pass the path instead: tess new --repo <path> <feature>"; exit 2
     else
-      TARGETS+=("${_hits[0]}")
+      c_blue "(repo: ${_pout#*$'\t'} — most active match)"
+      TARGETS+=("$_pout")
     fi
   fi
 elif [ "$FORCE_FLEET" -eq 0 ] && cwd_top="$(git rev-parse --show-toplevel 2>/dev/null)" && [ -n "$cwd_top" ]; then

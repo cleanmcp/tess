@@ -10,12 +10,14 @@ case "$c" in
     "Create feature worktrees, copy .env files in, open in cmux. Context-aware:" \
     "  inside a git repo that's NOT in TESS_REPOS  -> a worktree for THAT repo." \
     "  inside a fleet repo, or outside any repo    -> fan out your configured TESS_REPOS." \
-    "  --repo <name>  target any repo on disk by name (tess repos shows the index) · --fleet  force the fan-out." \
+    "  tess new <repo> <feature>  any repo by NAME — several copies? the one you actually use wins" \
+    "  (zoxide frecency + git activity decide; a genuine tie shows a picker). --fleet forces the fan-out." \
     "tess new --all <feature>   also include optional repos (TESS_REPOS_ALL)." \
-    "${D}e.g. tess new redis-cache · tess new --repo lokus fix-toolbar${R}" ;;
-  repos)     h "tess repos [index|find <name>]" \
-    "Every git repo on your disk (cached index; refreshes daily). Powers tess new --repo." \
-    "index = rebuild now · find <name> = resolve a name to a path. Scan roots: \$HOME + TESS_REPO_DIRS." ;;
+    "${D}e.g. tess new redis-cache · tess new lokus fix-toolbar · tess new --repo ~/src/x feat${R}" ;;
+  repos)     h "tess repos [index|find <name>|pick <name>]" \
+    "The repo map: every git repo on disk, ranked by use (zoxide + git activity). Refreshes daily." \
+    "Permission-safe on macOS: never triggers TCC dialogs — without Full Disk Access it skips" \
+    "Desktop/Documents/Downloads instead of prompting (add roots via TESS_REPO_DIRS)." ;;
   ls|list)   h "tess ls" "List your feature worktree folders." ;;
   rm|remove) h "tess rm <feature>" "Tear down a feature's worktrees (the clean way). Offers to delete the branch." ;;
   done)      h "tess done <feature> [--dry-run] [--yes]" \

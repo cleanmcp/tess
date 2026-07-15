@@ -58,8 +58,9 @@ cat <<EOF
 
   ${B}${G}🌳 WORKTREES${R} ${D}(the isolation layer — one worktree per session)${R}
      ${C}tess new${R} ${D}[name]${R}     new feature worktree — the repo you're in, or your configured set
-     ${C}tess new --all${R} ${D}name${R}  ...include optional repos · ${D}--repo <r>${R} any repo by name
-     ${C}tess repos${R}          every git repo on disk (the index behind --repo)
+     ${C}tess new${R} ${D}<repo> <name>${R}  any repo by name — smart-picks the copy you actually use
+     ${C}tess new --all${R} ${D}name${R}  ...include optional repos · ${D}--fleet${R} force your set
+     ${C}tess repos${R}          the repo map — every repo on disk, ranked by use
      ${C}tess ls${R}             list your feature folders
      ${C}tess rm${R} ${D}<name>${R}       delete a feature (clean way)
      ${C}tess env${R} ${D}<name>${R}      refresh .env files into a feature
