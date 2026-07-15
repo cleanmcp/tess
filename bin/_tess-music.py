@@ -107,7 +107,8 @@ JXA = '''(() => {
       album: grab("album"), albumArtist: grab("albumArtist"), genre: grab("genre"),
       year: grab("year"), duration: grab("duration"), plays: grab("playedCount"),
       lastPlayed: dts(grab("playedDate")), added: dts(grab("dateAdded")),
-      rating: grab("rating"), loved: grab("favorited") || grab("loved"), size: grab("size")
+      rating: grab("rating"), loved: grab("favorited") || grab("loved"), size: grab("size"),
+      cloud: grab("cloudStatus")
     };
   };
   const seen = new Set(), out = [];
@@ -373,15 +374,19 @@ def esc_as(s):
     return (s or "").replace("\\", "\\\\").replace('"', '\\"')
 
 
-def playlist_fill(name, pids):
-    """Create/replace a real user playlist with these tracks (persistent IDs), in order."""
+def playlist_fill(name, pids, pace=0, replace=True):
+    """Create (or top up) a real user playlist with these tracks (persistent IDs), in order.
+    pace: seconds to wait between adds — iCloud-synced libraries silently revert rapid
+    batch adds to whatever the cloud managed to absorb, so paced adds survive."""
     e = esc_as(name)
     idl = ", ".join(f'"{p}"' for p in pids)
-    script = f'''tell application "Music"
-  if not (exists user playlist "{e}") then make new user playlist with properties {{name:"{e}"}}
+    wipe = f'''
   try
     delete every track of user playlist "{e}"
-  end try
+  end try''' if replace else ""
+    pause = f"\n    delay {pace}" if pace else ""
+    script = f'''tell application "Music"
+  if not (exists user playlist "{e}") then make new user playlist with properties {{name:"{e}"}}{wipe}
   repeat with i in {{{idl}}}
     set src to missing value
     try
@@ -400,12 +405,13 @@ def playlist_fill(name, pids):
       try
         duplicate src to user playlist "{e}"
       end try
-    end if
+    end if{pause}
   end repeat
   return count of tracks of user playlist "{e}"
 end tell'''
     try:
-        p = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, timeout=600)
+        p = subprocess.run(["osascript", "-e", script], capture_output=True, text=True,
+                           timeout=600 + int(pace * len(pids) * 2))
     except subprocess.TimeoutExpired:
         die(f"filling playlist '{name}' timed out")
     if p.returncode != 0:
@@ -481,6 +487,7 @@ def parse_flags(argv):
     o = _O()
     o.text, o.filters, o.sort, o.asc, o.limit = [], [], None, None, None
     o.cols, o.json, o.fresh, o.play, o.to_playlist, o.by, o.ids = None, False, False, False, None, None, None
+    o.pace = 0.0
     def need(i, flag):
         if i >= len(argv):
             die(f"{flag} needs a value")
@@ -520,6 +527,12 @@ def parse_flags(argv):
                 die("--ids takes database ids or persistent ids, e.g. --ids 1505,9F60B4A20D3E88C2")
         elif a == "--to-playlist":
             i += 1; o.to_playlist = need(i, a)
+        elif a == "--pace":
+            i += 1
+            try:
+                o.pace = float(need(i, a))
+            except ValueError:
+                die("--pace takes seconds, e.g. --pace 2")
         elif a == "--by":
             i += 1; o.by = need(i, a).lower()
         elif a.startswith("--"):
@@ -580,7 +593,7 @@ def cmd_lib(argv):
         if o.to_playlist:
             if len(ids) > 300:
                 print(f"  {C.grey}copying {len(ids)} tracks into '{o.to_playlist}' — sit tight{C.r}")
-            got = playlist_fill(o.to_playlist, ids)
+            got = playlist_fill(o.to_playlist, ids, pace=o.pace)
             drop_cache()
             print(f"  ♫ playlist {C.bold}{o.to_playlist}{C.r} — {got} tracks")
             if o.play:
