@@ -103,7 +103,7 @@ JXA = '''(() => {
   const cols = t => {
     const grab = f => { try { return t[f]() } catch (e) { return null } };
     return {
-      id: grab("databaseID"), name: grab("name"), artist: grab("artist"),
+      id: grab("databaseID"), pid: grab("persistentID"), name: grab("name"), artist: grab("artist"),
       album: grab("album"), albumArtist: grab("albumArtist"), genre: grab("genre"),
       year: grab("year"), duration: grab("duration"), plays: grab("playedCount"),
       lastPlayed: dts(grab("playedDate")), added: dts(grab("dateAdded")),
@@ -172,6 +172,7 @@ for _aliases, _key, _kind in (
     ("added dateadded date_added", "added", "d"),
     ("rating stars", "rating", "n"), ("loved favorited fav", "loved", "b"),
     ("size", "size", "n"), ("id", "id", "n"), ("inlib library", "inlib", "b"),
+    ("pid persistentid persistent_id", "pid", "s"),
 ):
     for _a in _aliases.split():
         FIELDS[_a] = (_key, _kind)
@@ -349,26 +350,33 @@ def jrow(r):
             "duration": int(r.get("duration") or 0), "plays": r.get("plays") or 0,
             "rating": (r.get("rating") or 0) / 20, "loved": bool(r.get("loved")),
             "added": iso(r.get("added")), "last_played": iso(r.get("lastPlayed")),
-            "size": r.get("size"), "inlib": bool(r.get("inlib", True))}
+            "size": r.get("size"), "inlib": bool(r.get("inlib", True)),
+            "pid": r.get("pid")}
 
 
 # ---------------- actions ----------------
-def track_ref(tid):
-    return f'(first track of library playlist 1 whose database ID is {int(tid)})'
+# database IDs churn when iCloud sync re-registers tracks; persistent IDs survive.
+# All actions key on persistent ID, falling back to a playlist sweep for tracks
+# that were never added to the library.
+def track_ref(row):
+    pid = row.get("pid") if isinstance(row, dict) else None
+    if pid:
+        return f'(first track of library playlist 1 whose persistent ID is "{pid}")'
+    return f'(first track of library playlist 1 whose database ID is {int(row["id"] if isinstance(row, dict) else row)})'
 
 
-def play_id(tid):
-    osa(f'tell application "Music" to play {track_ref(tid)}')
+def play_id(row):
+    osa(f'tell application "Music" to play {track_ref(row)}')
 
 
 def esc_as(s):
     return (s or "").replace("\\", "\\\\").replace('"', '\\"')
 
 
-def playlist_fill(name, ids):
-    """Create/replace a real user playlist with these tracks, in this order."""
+def playlist_fill(name, pids):
+    """Create/replace a real user playlist with these tracks (persistent IDs), in order."""
     e = esc_as(name)
-    idl = ", ".join(str(int(i)) for i in ids)
+    idl = ", ".join(f'"{p}"' for p in pids)
     script = f'''tell application "Music"
   if not (exists user playlist "{e}") then make new user playlist with properties {{name:"{e}"}}
   try
@@ -377,13 +385,13 @@ def playlist_fill(name, ids):
   repeat with i in {{{idl}}}
     set src to missing value
     try
-      set src to (first track of library playlist 1 whose database ID is (contents of i))
+      set src to (first track of library playlist 1 whose persistent ID is (contents of i))
     end try
     if src is missing value then
       repeat with p in user playlists
         if src is missing value then
           try
-            set src to (first track of p whose database ID is (contents of i))
+            set src to (first track of p whose persistent ID is (contents of i))
           end try
         end if
       end repeat
@@ -429,11 +437,13 @@ def resolve_track(q, strict=False):
     non-interactive; loose (play): best guess = most-played match."""
     q = (q or "").strip()
     rows = fetch_library()
-    m = re.match(r"^id:(\d+)$", q)
+    m = re.match(r"^id:([0-9A-Fa-f]{8,}|\d+)$", q)
     if m:
-        r = next((r for r in rows if r.get("id") == int(m.group(1))), None)
+        key = m.group(1)
+        r = next((r for r in rows if str(r.get("id")) == key
+                  or (r.get("pid") or "").upper() == key.upper()), None)
         if not r:
-            die(f"no track with id {m.group(1)}")
+            die(f"no track with id {key}")
         return r
     if not q:
         die("give me a song (or id:<n>)")
@@ -459,7 +469,7 @@ def resolve_track(q, strict=False):
 
 def do_play(text):
     r = resolve_track(text)
-    play_id(r["id"]); card()
+    play_id(r); card()
 
 
 # ---------------- flag parsing ----------------
@@ -505,10 +515,9 @@ def parse_flags(argv):
                 field(c)
         elif a == "--ids":
             i += 1
-            try:
-                o.ids = [int(x) for x in re.split(r"[,\s]+", need(i, a).strip()) if x]
-            except ValueError:
-                die("--ids takes numbers, e.g. --ids 1505,2526,1699")
+            o.ids = [x.strip() for x in re.split(r"[,\s]+", need(i, a).strip()) if x.strip()]
+            if not all(re.fullmatch(r"\d+|[0-9A-Fa-f]{8,}", x) for x in o.ids):
+                die("--ids takes database ids or persistent ids, e.g. --ids 1505,9F60B4A20D3E88C2")
         elif a == "--to-playlist":
             i += 1; o.to_playlist = need(i, a)
         elif a == "--by":
@@ -550,11 +559,12 @@ def cmd_lib(argv):
     o = parse_flags(argv)
     rows = fetch_library(o.fresh)
     if o.ids is not None:  # explicit hand-picked set, kept in the order given
-        by_id = {r.get("id"): r for r in rows}
-        miss = [str(x) for x in o.ids if x not in by_id]
+        by_id = {str(r.get("id")): r for r in rows}
+        by_id.update({str(r.get("pid") or "").upper(): r for r in rows if r.get("pid")})
+        miss = [x for x in o.ids if x.upper() not in by_id and x not in by_id]
         if miss:
             die(f"no track with id: {', '.join(miss)}")
-        rows = select([by_id[x] for x in o.ids], o.text, o.filters)
+        rows = select([by_id.get(x) or by_id[x.upper()] for x in o.ids], o.text, o.filters)
         if o.sort:
             rows = sort_rows(rows, o.sort, o.asc)
     else:
@@ -566,17 +576,18 @@ def cmd_lib(argv):
     if o.to_playlist or o.play:
         if not rows:
             die("nothing matched — not touching playback")
-        ids = [r["id"] for r in rows]
+        ids = [r.get("pid") or str(r["id"]) for r in rows]
         if o.to_playlist:
             if len(ids) > 300:
                 print(f"  {C.grey}copying {len(ids)} tracks into '{o.to_playlist}' — sit tight{C.r}")
             got = playlist_fill(o.to_playlist, ids)
+            drop_cache()
             print(f"  ♫ playlist {C.bold}{o.to_playlist}{C.r} — {got} tracks")
             if o.play:
                 osa(f'tell application "Music" to play user playlist "{esc_as(o.to_playlist)}"'); card()
             return
         if len(ids) == 1:
-            play_id(ids[0]); card()
+            play_id(rows[0]); card()
         else:
             playlist_fill("tess queue", ids)
             osa('tell application "Music" to play user playlist "tess queue"')
@@ -721,7 +732,7 @@ if cmd in ("", "now"):
         lines = [f"{r.get('name') or ''}\t{r.get('artist') or ''}" for r in rows]
         sel = fzf(lines, "play ▸ ")
         if sel:
-            play_id(rows[lines.index(sel)]["id"]); print(); card()
+            play_id(rows[lines.index(sel)]); print(); card()
     else:
         card()
 
@@ -741,7 +752,7 @@ elif cmd in ("love", "like", "unlove", "unlike"):
     val = "false" if cmd.startswith("un") else "true"
     if rest:
         r = resolve_track(rest, strict=True)
-        ok = set_prop(track_ref(r["id"]), "favorited", val)
+        ok = set_prop(track_ref(r), "favorited", val)
         label = f"{r.get('name')} — {r.get('artist')}"
     else:
         ok = set_prop("current track", "favorited", val)
@@ -762,7 +773,7 @@ elif cmd == "rate":
     tgt = " ".join(args[:-1]).strip()
     if tgt:
         r = resolve_track(tgt, strict=True)
-        ok = set_prop(track_ref(r["id"]), "rating", int(round(stars * 20)))
+        ok = set_prop(track_ref(r), "rating", int(round(stars * 20)))
         label = f"{r.get('name')} — {r.get('artist')}"
     else:
         ok = set_prop("current track", "rating", int(round(stars * 20)))
@@ -808,7 +819,7 @@ elif cmd == "search":          # catalog search -> pick -> play (library if owne
     owned = next((r for r in rows if name.lower() in (r.get("name") or "").lower()
                   and artist.split("&")[0].strip().lower() in (r.get("artist") or "").lower()), None)
     if owned:
-        play_id(owned["id"])
+        play_id(owned)
         print(f"  ▶ {name} — {artist}  {C.grey}(from your library){C.r}")
     else:
         # Music's own URL handler → native app, bypasses cmux's browser. Catalog tracks open the page (press play).
