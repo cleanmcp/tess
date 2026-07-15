@@ -143,6 +143,7 @@ tess people | companies      rosters            tess brief                   you
 
 ```
 tess messages [who]   tess chat <name>   tess send <name> -- <msg>   tess calls   tess calendar [days]
+tess mail [query]     tess music [lib|top|stats]   # email · Apple Music library engine (sort/filter/playlists)
 ```
 
 These need macOS permissions you grant yourself (Full Disk Access for reads; Automation for `send`). Skip them and the core is untouched.

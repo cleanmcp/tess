@@ -132,7 +132,7 @@ cat <<EOF
      ${C}tess calls${R}          recent call log
      ${C}tess mail${R} ${D}[query]${R}     email — ${C}read${R} ${D}<id>${R} · ${C}search${R} · ${C}send${R}/${C}reply${R} ${D}(confirmed)${R} · ${C}flag${R}/${C}archive${R}/${C}move${R}…
      ${C}tess read${R} ${D}[title]${R}     reading companion for your current book
-     ${C}tess music${R} ${D}[search <q>]${R}  Apple Music — art, fuzzy-play, catalog
+     ${C}tess music${R} ${D}[lib|top|stats]${R}  Apple Music — play, sort/filter the whole library, playlists
 
   ${B}${G}🖥️  APPS & STARTUP${R}
      ${C}tess${R} ${D}<app>${R}         open any app — e.g. ${C}tess chrome${R} · ${C}tess arc${R}

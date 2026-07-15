@@ -118,8 +118,15 @@ case "$c" in
     "${D}e.g. tess mail from yuriy · tess mail search \"pitch deck\" · tess mail send kevin -- \"Deck\" \"attached soon\"${R}" ;;
   calendar|cal) h "tess calendar [days]" "Upcoming events (incl. recurring). Default 7 days." ;;
   read|book) h "tess read [title]" "Reading companion for your current Apple Book: recap + gist for your page, explains anything, takes notes." ;;
-  music)     h "tess music [play|pause|next|prev|search <q>|<song>]" \
-    "Apple Music: now-playing with album art, fuzzy-play your library, or search the catalog." ;;
+  music)     h "tess music [<song>|play|pause|next|prev|search <q>]  +  library engine" \
+    "Apple Music: now-playing with art, fuzzy-play your library, catalog search — plus query the whole library:" \
+    "  lib [text] [filters] = any slice · top/recent [N] · loved · artists/albums/genres/years [--by tracks|plays|time] ·" \
+    "  stats · playlists · love/unlove [q|id:N] · rate [q|id:N] <0-5>  (no target = current track)." \
+    "Flags: --sort <field> [--asc|--desc] · --filter \"f<op>v\" (repeatable; bare artist=drake works) · --limit N ·" \
+    "  --cols a,b,c · --json · --fresh (skip cache) · --play (play/queue results) · --to-playlist <name> (real playlist)." \
+    "Fields: name artist album albumartist genre year duration plays played added rating loved size id." \
+    "Ops: = contains · == exact · != · > >= < <=  — dates take 2024-06-01 | 30d/12w/6m/1y · rating in stars 0-5." \
+    "${D}e.g. tess music lib --filter \"added=90d\" --sort plays · tess music lib rap \"year>=2020\" --to-playlist \"new rap\"${R}" ;;
 
   open|app|launch) h "tess open <app>  (or just: tess <app>)" "Open any installed app by name (fuzzy)." ;;
   apps)      h "tess apps" "Fuzzy-pick an app to open." ;;
