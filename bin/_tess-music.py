@@ -357,9 +357,24 @@ def playlist_fill(name, ids):
     delete every track of user playlist "{e}"
   end try
   repeat with i in {{{idl}}}
+    set src to missing value
     try
-      duplicate (first track of library playlist 1 whose database ID is (contents of i)) to user playlist "{e}"
+      set src to (first track of library playlist 1 whose database ID is (contents of i))
     end try
+    if src is missing value then
+      repeat with p in user playlists
+        if src is missing value then
+          try
+            set src to (first track of p whose database ID is (contents of i))
+          end try
+        end if
+      end repeat
+    end if
+    if src is not missing value then
+      try
+        duplicate src to user playlist "{e}"
+      end try
+    end if
   end repeat
   return count of tracks of user playlist "{e}"
 end tell'''
