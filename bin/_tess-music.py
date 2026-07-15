@@ -10,8 +10,9 @@ Interactive for humans, param-driven for agents.
   tess music pause|next|prev|stop
 
 library engine — every read takes: [text] --filter "f<op>v" --sort <field> --limit N --json --fresh
-  tess music lib             query the library   extra: --cols a,b,c · --play · --to-playlist <name>
-                             --ids 12,34,56      hand-picked set, kept in that order (curation -> playlist)
+  tess music lib             query the whole collection — library + playlist-only tracks
+                             (filter inlib=false for playlist-only) · --cols a,b,c · --play ·
+                             --to-playlist <name> · --ids 12,34 hand-picked set, order kept
   tess music top [N]         most played         tess music recent [N]   latest adds
   tess music loved           favorites           tess music playlists    playlists + counts
   tess music artists|albums|genres|years [--by tracks|plays|time]
@@ -19,7 +20,7 @@ library engine — every read takes: [text] --filter "f<op>v" --sort <field> --l
   tess music love|unlove [query|id:N]        no arg = current track
   tess music rate [query|id:N] <0-5>         e.g. tess music rate id:1505 4.5
 
-fields   name artist album albumartist genre year duration plays played added rating loved size id
+fields   name artist album albumartist genre year duration plays played added rating loved size id inlib
 filters  = contains · == exact · != · > >= < <=     (quote them: --filter "plays>=10")
          dates take 2024-06-01 | 30d | 12w | 6m | 1y   ·   rating in stars 0-5
   e.g.   tess music lib --filter "added=90d" --sort plays          what's hot this quarter
@@ -92,26 +93,45 @@ def card(prefix=""):
 
 
 # ---------------- library engine ----------------
-# One batched Apple Event per property (JXA) -> whole library with metadata in <1s,
-# instead of an AppleScript repeat-loop of per-track events.
+# One batched Apple Event per property (JXA) -> whole collection with metadata in seconds,
+# instead of an AppleScript repeat-loop of per-track events. Sweeps the library AND every
+# user playlist: tracks added straight to a playlist never appear in library playlist 1,
+# so a library-only read silently misses them. Deduped by database ID; inlib marks source.
 JXA = '''(() => {
   const M = Application("Music");
-  const t = M.libraryPlaylists[0].tracks;
-  const grab = f => { try { return t[f]() } catch (e) { return null } };
   const dts = a => a ? a.map(d => d ? Math.floor(d.getTime() / 1000) : null) : null;
-  const o = {
-    id: grab("databaseID"), name: grab("name"), artist: grab("artist"),
-    album: grab("album"), albumArtist: grab("albumArtist"), genre: grab("genre"),
-    year: grab("year"), duration: grab("duration"), plays: grab("playedCount"),
-    lastPlayed: dts(grab("playedDate")), added: dts(grab("dateAdded")),
-    rating: grab("rating"), loved: grab("favorited") || grab("loved"), size: grab("size")
+  const cols = t => {
+    const grab = f => { try { return t[f]() } catch (e) { return null } };
+    return {
+      id: grab("databaseID"), name: grab("name"), artist: grab("artist"),
+      album: grab("album"), albumArtist: grab("albumArtist"), genre: grab("genre"),
+      year: grab("year"), duration: grab("duration"), plays: grab("playedCount"),
+      lastPlayed: dts(grab("playedDate")), added: dts(grab("dateAdded")),
+      rating: grab("rating"), loved: grab("favorited") || grab("loved"), size: grab("size")
+    };
   };
-  return JSON.stringify(o);
+  const seen = new Set(), out = [];
+  const emit = (c, inlib) => {
+    const n = (c.name || []).length;
+    for (let i = 0; i < n; i++) {
+      const id = c.id ? c.id[i] : null;
+      if (id === null || id === undefined || seen.has(id)) continue;
+      seen.add(id);
+      const r = {inlib: inlib};
+      for (const k in c) r[k] = c[k] ? c[k][i] : null;
+      out.push(r);
+    }
+  };
+  emit(cols(M.libraryPlaylists[0].tracks), true);
+  for (const p of M.userPlaylists()) {
+    try { emit(cols(p.tracks), false) } catch (e) {}
+  }
+  return JSON.stringify(out);
 })()'''
 
 
 def fetch_library(fresh=False):
-    """Every track as a row dict. Cached briefly so repeated queries are instant."""
+    """Every track (library + playlist-only) as a row dict. Cached briefly."""
     if not fresh:
         try:
             c = json.load(open(LIB_CACHE))
@@ -121,14 +141,12 @@ def fetch_library(fresh=False):
             pass
     try:
         p = subprocess.run(["osascript", "-l", "JavaScript", "-e", JXA],
-                           capture_output=True, text=True, timeout=120)
+                           capture_output=True, text=True, timeout=300)
     except subprocess.TimeoutExpired:
         die("Music library read timed out — is Music.app responding?")
     if p.returncode != 0 or not p.stdout.strip():
         die(f"couldn't read the Music library: {p.stderr.strip()[:200]}")
-    cols = json.loads(p.stdout)
-    n = len(cols.get("name") or [])
-    rows = [{k: (v[i] if v and i < len(v) else None) for k, v in cols.items()} for i in range(n)]
+    rows = json.loads(p.stdout)
     try:
         os.makedirs(os.path.dirname(LIB_CACHE), exist_ok=True)
         json.dump({"at": time.time(), "rows": rows}, open(LIB_CACHE, "w"))
@@ -153,11 +171,11 @@ for _aliases, _key, _kind in (
     ("played lastplayed last_played last", "lastPlayed", "d"),
     ("added dateadded date_added", "added", "d"),
     ("rating stars", "rating", "n"), ("loved favorited fav", "loved", "b"),
-    ("size", "size", "n"), ("id", "id", "n"),
+    ("size", "size", "n"), ("id", "id", "n"), ("inlib library", "inlib", "b"),
 ):
     for _a in _aliases.split():
         FIELDS[_a] = (_key, _kind)
-FIELD_HELP = "name artist album albumartist genre year duration plays played added rating loved size id"
+FIELD_HELP = "name artist album albumartist genre year duration plays played added rating loved size id inlib"
 
 
 def field(alias):
@@ -331,7 +349,7 @@ def jrow(r):
             "duration": int(r.get("duration") or 0), "plays": r.get("plays") or 0,
             "rating": (r.get("rating") or 0) / 20, "loved": bool(r.get("loved")),
             "added": iso(r.get("added")), "last_played": iso(r.get("lastPlayed")),
-            "size": r.get("size")}
+            "size": r.get("size"), "inlib": bool(r.get("inlib", True))}
 
 
 # ---------------- actions ----------------
