@@ -6,10 +6,16 @@ B=$'\033[1m'; C=$'\033[36m'; D=$'\033[2m'; R=$'\033[0m'; [ -t 1 ] || { B=; C=; D
 h() { printf "%s%s%s\n" "$C" "$1" "$R"; shift; for l in "$@"; do printf "  %s\n" "$l"; done; echo; }
 
 case "$c" in
-  new|worktree) h "tess new <feature> [base]" \
-    "Create a git worktree for the feature across every configured repo, copy .env files in, open it in cmux." \
+  new|worktree) h "tess new [--repo <name>|--fleet] <feature> [base]" \
+    "Create feature worktrees, copy .env files in, open in cmux. Context-aware:" \
+    "  inside a git repo that's NOT in TESS_REPOS  -> a worktree for THAT repo." \
+    "  inside a fleet repo, or outside any repo    -> fan out your configured TESS_REPOS." \
+    "  --repo <name>  target any repo on disk by name (tess repos shows the index) · --fleet  force the fan-out." \
     "tess new --all <feature>   also include optional repos (TESS_REPOS_ALL)." \
-    "${D}e.g. tess new redis-cache${R}" ;;
+    "${D}e.g. tess new redis-cache · tess new --repo lokus fix-toolbar${R}" ;;
+  repos)     h "tess repos [index|find <name>]" \
+    "Every git repo on your disk (cached index; refreshes daily). Powers tess new --repo." \
+    "index = rebuild now · find <name> = resolve a name to a path. Scan roots: \$HOME + TESS_REPO_DIRS." ;;
   ls|list)   h "tess ls" "List your feature worktree folders." ;;
   rm|remove) h "tess rm <feature>" "Tear down a feature's worktrees (the clean way). Offers to delete the branch." ;;
   done)      h "tess done <feature> [--dry-run] [--yes]" \

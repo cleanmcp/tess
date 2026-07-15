@@ -72,10 +72,11 @@ esac
 # create mode — run the real script, then open the new feature folder in cmux
 "$SCRIPT" "$@"
 
-# figure out the feature name (first arg that isn't a flag) and open it
-feat=""
+# figure out the feature name (first arg that isn't a flag or a flag's value) and open it
+feat=""; _skip=0
 for a in "$@"; do
-  case "$a" in --all|--web) ;; *) feat="$a"; break ;; esac
+  [ "$_skip" = 1 ] && { _skip=0; continue; }
+  case "$a" in --all|--web|--fleet) ;; --repo) _skip=1 ;; *) feat="$a"; break ;; esac
 done
 if [ -n "$feat" ] && [ -d "$WASH/$feat" ]; then
   cmux open "$WASH/$feat" >/dev/null 2>&1 && echo "→ opened $WASH/$feat in cmux" || true

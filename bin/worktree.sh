@@ -95,6 +95,11 @@ if [ "${1:-}" = "rm" ]; then
   for dst in "$DEST_ROOT"/*/; do
     [ -d "$dst" ] || continue
     repo="$(basename "$dst")"; src="$CORE_DIR/$repo"
+    # single-repo features live outside the fleet dir — follow the worktree's own pointer
+    if [ ! -d "$src" ] && [ -f "${dst%/}/.git" ]; then
+      gd="$(sed -n 's/^gitdir: //p' "${dst%/}/.git" 2>/dev/null)"
+      case "$gd" in */.git/worktrees/*) src="${gd%/.git/worktrees/*}" ;; esac
+    fi
     c_yellow "  $repo"
     if [ -d "$src" ] && git -C "$src" worktree remove --force "${dst%/}" 2>/dev/null; then
       echo "      removed worktree"
@@ -118,10 +123,69 @@ if [ "${1:-}" = "rm" ]; then
 fi
 
 # --- create mode -------------------------------------------------------------
+# flags: --repo <name> targets ONE repo (found anywhere on disk via _tess-repos.sh);
+# --fleet forces the configured TESS_REPOS fan-out even when inside another repo.
+REPO_PICK=""; FORCE_FLEET=0; _args=()
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --repo)  REPO_PICK="${2:-}"; [ -z "$REPO_PICK" ] && { c_red "--repo needs a name"; exit 1; }; shift 2 ;;
+    --fleet) FORCE_FLEET=1; shift ;;
+    *) _args+=("$1"); shift ;;
+  esac
+done
+set -- ${_args[@]+"${_args[@]}"}
 FEATURE="${1:-}"
 BASE="${2:-$DEFAULT_BASE}"   # base branch to cut from (default: main)
-[ -z "$FEATURE" ] && { c_red "usage: $0 <feature-name> [base-branch]"; exit 1; }
+[ -z "$FEATURE" ] && { c_red "usage: $0 [--repo <name>|--fleet] <feature-name> [base-branch]"; exit 1; }
 check_name "$FEATURE"
+
+# Pick target repos: explicit --repo beats the repo you're standing in (when it
+# isn't part of the configured fleet), which beats the TESS_REPOS fan-out.
+# Standing inside a fleet repo still fans out the whole fleet — same-feature
+# branches across paired repos is the point of the fleet.
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+TARGETS=()   # "name<TAB>src" pairs
+_fleet_targets() {
+  if [ "${#REPOS[@]}" -eq 0 ] || [ -z "${REPOS[0]:-}" ]; then
+    c_red "no repos configured — run inside a git repo, pass --repo <name>, or set TESS_REPOS in ~/.config/tess/config"
+    exit 1
+  fi
+  for r in "${REPOS[@]}"; do TARGETS+=("$r"$'\t'"$CORE_DIR/$r"); done
+}
+if [ -n "$REPO_PICK" ]; then
+  if [ -d "$REPO_PICK" ] && git -C "$REPO_PICK" rev-parse --git-dir >/dev/null 2>&1; then
+    _p="$(cd "$REPO_PICK" && git rev-parse --show-toplevel)"   # --repo <path> form
+    TARGETS+=("$(basename "$_p")"$'\t'"$_p")
+  else
+    _hits=(); while IFS= read -r _l; do [ -n "$_l" ] && _hits+=("$_l"); done \
+      < <(bash "$SCRIPT_DIR/_tess-repos.sh" find "$REPO_PICK" 2>/dev/null)
+    if [ "${#_hits[@]}" -eq 0 ]; then
+      c_red "no repo matching '$REPO_PICK' — see: tess repos"; exit 1
+    elif [ "${#_hits[@]}" -gt 1 ] && [ -t 0 ] && command -v fzf >/dev/null 2>&1; then
+      sel="$(printf '%s\n' "${_hits[@]}" | fzf --prompt 'repo ▸ ' --delimiter '\t')" || true
+      [ -z "${sel:-}" ] && exit 0
+      TARGETS+=("$sel")
+    elif [ "${#_hits[@]}" -gt 1 ]; then
+      c_red "'$REPO_PICK' matches ${#_hits[@]} repos:"
+      printf '%s\n' "${_hits[@]}" | sed $'s/\t/  ->  /;s/^/  /' >&2
+      c_red "pass the path instead: tess new --repo <path> <feature>"; exit 2
+    else
+      TARGETS+=("${_hits[0]}")
+    fi
+  fi
+elif [ "$FORCE_FLEET" -eq 0 ] && cwd_top="$(git rev-parse --show-toplevel 2>/dev/null)" && [ -n "$cwd_top" ]; then
+  cwd_name="$(basename "$cwd_top")"
+  in_fleet=0
+  for r in ${REPOS[@]+"${REPOS[@]}"}; do [ "$r" = "$cwd_name" ] && in_fleet=1; done
+  if [ "$in_fleet" -eq 1 ]; then
+    _fleet_targets
+  else
+    c_blue "(inside '$cwd_name' — targeting this repo; use --fleet for your configured set)"
+    TARGETS+=("$cwd_name"$'\t'"$cwd_top")
+  fi
+else
+  _fleet_targets
+fi
 
 DEST_ROOT="$WORKTREE_PARENT/$FEATURE"
 mkdir -p "$DEST_ROOT"
@@ -129,13 +193,14 @@ mkdir -p "$DEST_ROOT"
 c_blue "Creating worktrees for feature '$FEATURE'  ->  $DEST_ROOT"
 echo
 
-for repo in "${REPOS[@]}"; do
-  src="$CORE_DIR/$repo"
+for pair in "${TARGETS[@]}"; do
+  repo="${pair%%$'\t'*}"
+  src="${pair#*$'\t'}"
   dst="$DEST_ROOT/$repo"
   c_yellow "  $repo"
 
-  # clone from GitHub if the source repo doesn't exist locally yet
-  if [ ! -d "$src" ]; then
+  # clone from GitHub if a configured fleet repo doesn't exist locally yet
+  if [ ! -d "$src" ] && [[ "$src" == "$CORE_DIR/"* ]]; then
     c_blue "      cloning ${TESS_GIT_REMOTE:+$TESS_GIT_REMOTE/}$repo from GitHub..."
     git clone "https://github.com/${TESS_GIT_REMOTE:+$TESS_GIT_REMOTE/}$repo.git" "$src" >/dev/null
     echo "      cloned into $src"

@@ -88,8 +88,9 @@ tess spend                          budget ledger (spawn-time caps are enforced)
 Sessions ride on git worktrees. You can also drive them directly for multi-repo feature work.
 
 ```
-tess new <feature>           a matching worktree across your configured repos, env files copied in
+tess new <feature>           worktree(s) for the repo you're standing in — or, outside a repo, your configured set
 tess new --all <feature>     include optional repos
+tess new --repo <r> <feat>   target any repo on disk by name (tess repos lists the index)
 tess ls | rm | env | clean | branches | wt | path
 ```
 

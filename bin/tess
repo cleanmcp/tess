@@ -57,8 +57,9 @@ cat <<EOF
   ${D}every stream of work is an isolated session: spawn · watch · steer · ship${R}
 
   ${B}${G}🌳 WORKTREES${R} ${D}(the isolation layer — one worktree per session)${R}
-     ${C}tess new${R} ${D}[name]${R}     new feature worktree across your repos, opens in cmux
-     ${C}tess new --all${R} ${D}name${R}  ...include optional repos too
+     ${C}tess new${R} ${D}[name]${R}     new feature worktree — the repo you're in, or your configured set
+     ${C}tess new --all${R} ${D}name${R}  ...include optional repos · ${D}--repo <r>${R} any repo by name
+     ${C}tess repos${R}          every git repo on disk (the index behind --repo)
      ${C}tess ls${R}             list your feature folders
      ${C}tess rm${R} ${D}<name>${R}       delete a feature (clean way)
      ${C}tess env${R} ${D}<name>${R}      refresh .env files into a feature
@@ -263,7 +264,7 @@ case "$cmd" in
 esac
 
 # words that can never be feature/agent names (subcommands + obvious traps)
-TESS_RESERVED="help menu new ls list rm remove clean env branches path wt worktrees claude kimi agents agent loop resume r local offline small big med medium think partner post write brand boss ask voice listen git lg fish matrix bonsai pipes dex doctor disk cheat fix-files fixfiles update commands custom open app launch apps login startup brief hub person company add log people companies reminders todo todos followups calendar cal messages msg chat thread send text calls mail email music read book readpos done inbox report digest status team orchestrate ship wait watch approve inject tell kill hcom diff spend all"
+TESS_RESERVED="help menu new repos ls list rm remove clean env branches path wt worktrees claude kimi agents agent loop resume r local offline small big med medium think partner post write brand boss ask voice listen git lg fish matrix bonsai pipes dex doctor disk cheat fix-files fixfiles update commands custom open app launch apps login startup brief hub person company add log people companies reminders todo todos followups calendar cal messages msg chat thread send text calls mail email music read book readpos done inbox report digest status team orchestrate ship wait watch approve inject tell kill hcom diff spend all"
 export TESS_RESERVED
 _validname() {  # _validname <name> <what> — reject flag-like/reserved/path-unsafe names
   local n="${1:-}" what="${2:-name}"
@@ -309,8 +310,13 @@ case "$cmd" in
 
   # worktrees ---------------------------------------------------------------
   new)      # validate the feature name (first non-flag arg); base branch is untouched
-    for _a in "$@"; do case "$_a" in --all|--web) ;; *) _validname "$_a" "feature name" || exit 2; break ;; esac; done
+    _skip=0
+    for _a in "$@"; do
+      [ "$_skip" = 1 ] && { _skip=0; continue; }
+      case "$_a" in --all|--web|--fleet) ;; --repo) _skip=1 ;; *) _validname "$_a" "feature name" || exit 2; break ;; esac
+    done
     "$TESS_BIN/wt" "$@" ;;
+  repos)    exec bash "$TESS_BIN/_tess-repos.sh" "$@" ;;
   ls|list)  echo "${B}Your features:${R}"; "$TESS_BIN/wt" ls ;;
   rm)       _validname "${1:-}" "feature name" || exit 2; "$TESS_BIN/wt" rm "$@" ;;
   clean)    "$TESS_BIN/wt" prune ;;
