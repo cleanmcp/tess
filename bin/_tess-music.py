@@ -15,6 +15,7 @@ library engine — every read takes: [text] --filter "f<op>v" --sort <field> --l
                              --to-playlist <name> · --ids 12,34 hand-picked set, order kept
   tess music top [N]         most played         tess music recent [N]   latest adds
   tess music loved           favorites           tess music playlists    playlists + counts
+  tess music cover <playlist> <img>              set a playlist's cover art (png/jpg)
   tess music artists|albums|genres|years [--by tracks|plays|time]
   tess music stats           library overview
   tess music love|unlove [query|id:N]        no arg = current track
@@ -706,6 +707,46 @@ def cmd_stats(argv):
     print(f"    {C.grey}last added {C.r}{newest.get('name')} — {newest.get('artist')} {C.grey}({fmt_when(newest.get('added'))}){C.r}")
 
 
+def playlist_names():
+    out = osa('''tell application "Music"
+  set o to ""
+  repeat with p in user playlists
+    set o to o & (name of p) & linefeed
+  end repeat
+  return o
+end tell''', timeout=60)
+    return [l for l in out.splitlines() if l.strip()]
+
+
+def cmd_cover(args):
+    """Set a playlist's cover image. Music applies the artwork and then throws a
+    phantom 'error of type 1' — the write lands anyway, so that error is success."""
+    if len(args) < 2:
+        die('usage: tess music cover <playlist> <image.png|jpg>  (e.g. tess music cover "Paro Hours 🌙" cover.png)')
+    img = os.path.abspath(os.path.expanduser(args[-1]))
+    query = " ".join(args[:-1]).strip()
+    if not os.path.isfile(img):
+        die(f"no image at {img}")
+    kind = "«class PNGf»" if img.lower().endswith(".png") else "JPEG picture"
+    names = playlist_names()
+    hits = [n for n in names if n == query] or [n for n in names if query.lower() in n.lower()]
+    if not hits:
+        die(f"no playlist matching '{query}'")
+    if len(hits) > 1:
+        die(f"{len(hits)} playlists match '{query}': " + " · ".join(hits[:6]) + " — be exact")
+    name = hits[0]
+    p = subprocess.run(["osascript", "-e",
+                        f'tell application "Music" to set data of artwork 1 of user playlist "{esc_as(name)}" '
+                        f'to (read (POSIX file "{img}") as {kind})'],
+                       capture_output=True, text=True, timeout=60)
+    err = p.stderr.strip()
+    if p.returncode == 0 or "type 1" in err:  # phantom error — artwork is applied
+        osa(f'tell application "Music" to reveal user playlist "{esc_as(name)}"')
+        print(f"  ♪ cover set on {C.bold}{name}{C.r} {C.grey}({os.path.basename(img)}){C.r}")
+    else:
+        die(f"couldn't set cover: {err[:200]}")
+
+
 def cmd_playlists():
     out = osa('''tell application "Music"
   set o to ""
@@ -808,6 +849,8 @@ elif cmd == "stats":
     cmd_stats(sys.argv[2:])
 elif cmd == "playlists":
     cmd_playlists()
+elif cmd == "cover":
+    cmd_cover(sys.argv[2:])
 
 elif cmd == "play":            # fuzzy-play from library (agent-friendly; id:<n> exact)
     do_play(rest)
