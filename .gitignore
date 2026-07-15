@@ -4,3 +4,6 @@ __pycache__/
 
 # local handoff / working notes — never ship these in the public repo
 TESS-*-REPORT.md
+
+# personal scratch — never ship
+junk/

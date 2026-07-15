@@ -11,6 +11,7 @@ Interactive for humans, param-driven for agents.
 
 library engine — every read takes: [text] --filter "f<op>v" --sort <field> --limit N --json --fresh
   tess music lib             query the library   extra: --cols a,b,c · --play · --to-playlist <name>
+                             --ids 12,34,56      hand-picked set, kept in that order (curation -> playlist)
   tess music top [N]         most played         tess music recent [N]   latest adds
   tess music loved           favorites           tess music playlists    playlists + counts
   tess music artists|albums|genres|years [--by tracks|plays|time]
@@ -436,7 +437,7 @@ class _O:
 def parse_flags(argv):
     o = _O()
     o.text, o.filters, o.sort, o.asc, o.limit = [], [], None, None, None
-    o.cols, o.json, o.fresh, o.play, o.to_playlist, o.by = None, False, False, False, None, None
+    o.cols, o.json, o.fresh, o.play, o.to_playlist, o.by, o.ids = None, False, False, False, None, None, None
     def need(i, flag):
         if i >= len(argv):
             die(f"{flag} needs a value")
@@ -469,6 +470,12 @@ def parse_flags(argv):
             o.cols = [c.strip().lower() for c in need(i, a).split(",") if c.strip()]
             for c in o.cols:
                 field(c)
+        elif a == "--ids":
+            i += 1
+            try:
+                o.ids = [int(x) for x in re.split(r"[,\s]+", need(i, a).strip()) if x]
+            except ValueError:
+                die("--ids takes numbers, e.g. --ids 1505,2526,1699")
         elif a == "--to-playlist":
             i += 1; o.to_playlist = need(i, a)
         elif a == "--by":
@@ -508,8 +515,18 @@ def default_cols(sort_alias):
 
 def cmd_lib(argv):
     o = parse_flags(argv)
-    rows = select(fetch_library(o.fresh), o.text, o.filters)
-    rows = sort_rows(rows, o.sort or "artist", o.asc)
+    rows = fetch_library(o.fresh)
+    if o.ids is not None:  # explicit hand-picked set, kept in the order given
+        by_id = {r.get("id"): r for r in rows}
+        miss = [str(x) for x in o.ids if x not in by_id]
+        if miss:
+            die(f"no track with id: {', '.join(miss)}")
+        rows = select([by_id[x] for x in o.ids], o.text, o.filters)
+        if o.sort:
+            rows = sort_rows(rows, o.sort, o.asc)
+    else:
+        rows = select(rows, o.text, o.filters)
+        rows = sort_rows(rows, o.sort or "artist", o.asc)
     total = len(rows)
     if o.limit is not None:
         rows = rows[:o.limit]

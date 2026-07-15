@@ -123,7 +123,8 @@ case "$c" in
     "  lib [text] [filters] = any slice · top/recent [N] · loved · artists/albums/genres/years [--by tracks|plays|time] ·" \
     "  stats · playlists · love/unlove [q|id:N] · rate [q|id:N] <0-5>  (no target = current track)." \
     "Flags: --sort <field> [--asc|--desc] · --filter \"f<op>v\" (repeatable; bare artist=drake works) · --limit N ·" \
-    "  --cols a,b,c · --json · --fresh (skip cache) · --play (play/queue results) · --to-playlist <name> (real playlist)." \
+    "  --cols a,b,c · --ids 12,34 (hand-picked set, order kept) · --json · --fresh (skip cache) ·" \
+    "  --play (play/queue results) · --to-playlist <name> (materialize a real playlist)." \
     "Fields: name artist album albumartist genre year duration plays played added rating loved size id." \
     "Ops: = contains · == exact · != · > >= < <=  — dates take 2024-06-01 | 30d/12w/6m/1y · rating in stars 0-5." \
     "${D}e.g. tess music lib --filter \"added=90d\" --sort plays · tess music lib rap \"year>=2020\" --to-playlist \"new rap\"${R}" ;;
