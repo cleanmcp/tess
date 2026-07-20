@@ -210,6 +210,10 @@ The installer wires a short primer into your agents' instructions (`CLAUDE.md`, 
 
 ---
 
+## Contributing
+
+PRs welcome — [CONTRIBUTING.md](CONTRIBUTING.md) has the repo layout and conventions. `tests/smoke.sh` runs the same checks as CI (everything happens in a temp dir — safe anywhere).
+
 ## License
 
 MIT — see [LICENSE](LICENSE).

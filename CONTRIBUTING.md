@@ -35,4 +35,5 @@ templates/              built-in role templates for `tess team` (investigate/imp
   ways a user can't predict; ambiguity is an error (or an interactive picker), never a guess.
 - **User-neutral language.** The user is "they/them" in prompts and comments; no personal
   names, playlists, repos, or app sets in code, defaults, or examples.
-- Verify with `bash -n` on shell scripts and `python3 -m py_compile` on python before pushing.
+- Run `tests/smoke.sh` before pushing — it syntax-checks everything and runs the
+  worktree battery in a temp dir (CI runs the same script).

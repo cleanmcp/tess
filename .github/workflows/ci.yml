@@ -1,0 +1,13 @@
+name: checks
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: smoke tests (syntax + worktree battery + dispatcher basics)
+        run: bash tests/smoke.sh

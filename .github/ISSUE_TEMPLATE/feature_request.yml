@@ -1,0 +1,24 @@
+name: Feature request
+description: Something tess should do
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What are you trying to do that tess doesn't handle (or makes painful)?
+    validations:
+      required: true
+  - type: textarea
+    id: ux
+    attributes:
+      label: Proposed command / UX
+      description: Sketch the command line you'd want to type and what it should print.
+      placeholder: |
+        tess foo <bar>     does X
+        tess foo --baz     also Y
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Workaround today
+      description: How you're doing it now, if at all.

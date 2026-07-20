@@ -1,0 +1,50 @@
+name: Bug report
+description: Something in tess misbehaves
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you ran, what you expected, what you got instead.
+      placeholder: |
+        Ran `tess new lokus fix-x` expecting a worktree for lokus, got ...
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Command output
+      description: Paste the full output (pipe through `cat` to strip colors). Redact anything personal.
+      render: text
+  - type: input
+    id: version
+    attributes:
+      label: tess version
+      description: "`git -C <your tess clone> rev-parse --short HEAD`"
+      placeholder: 25bc34e
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - macOS
+        - Linux
+        - other
+    validations:
+      required: true
+  - type: input
+    id: terminal
+    attributes:
+      label: Terminal
+      placeholder: cmux / iTerm2 / Terminal.app / kitty …
+  - type: checkboxes
+    id: area
+    attributes:
+      label: Area
+      options:
+        - label: worktrees (new/ls/rm/env/wt/path)
+        - label: sessions / fleet (claude/kimi/team/status/tell/ship…)
+        - label: brain (notes vault)
+        - label: life (messages/mail/music/calendar — macOS)
+        - label: install / update
