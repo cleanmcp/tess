@@ -124,10 +124,16 @@ if kind == "claude":
     if cwd and os.path.isdir(cwd):
         os.chdir(cwd)
     print(f"  {C.grey}resuming claude in {cwd or folder}…{C.r}")
-    os.execvp("claude", ["claude", "--resume", sid])
+    try:
+        os.execvp("claude", ["claude", "--resume", sid])
+    except FileNotFoundError:
+        print("  claude CLI not found on PATH."); sys.exit(1)
 else:
     kc = kimi_cwd(sdir) if sdir else None
     if kc and os.path.isdir(kc):
         os.chdir(kc)
     print(f"  {C.grey}resuming kimi in {kc or folder}…{C.r}")
-    os.execvp("kimi", ["kimi", "-S", sid])
+    try:
+        os.execvp("kimi", ["kimi", "-S", sid])
+    except FileNotFoundError:
+        print("  kimi CLI not found on PATH."); sys.exit(1)

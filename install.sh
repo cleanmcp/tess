@@ -33,15 +33,22 @@ mkdir -p "$HOME/.config/tess/commands" "$HOME/.config/tess/templates" "$HOME/.co
 [ -f "$HOME/.config/tess/modes/README" ] || echo "Agent-mode overrides for tess think/post/boss/read/orchestrate: a think.md / post.md / boss.md / read.md / orchestrate.md here overrides the repo's modes/. The repo copies stay current with 'tess update'; yours win." > "$HOME/.config/tess/modes/README"
 
 say "› teaching your AI agents about tess"
-_inject_primer() {   # append the primer to an agent instructions file (idempotent)
+_inject_primer() {   # wire (or refresh) the primer block in an agent instructions file
   local f="$1"
   mkdir -p "$(dirname "$f")"; [ -f "$f" ] || : > "$f"
-  if grep -q "tess-agent-primer" "$f" 2>/dev/null; then
-    echo "  already wired: ${f/#$HOME/~}"
-  else
-    { echo; cat "$HERE/agent-primer.md"; } >> "$f"
-    echo "  wired tess into: ${f/#$HOME/~}"
-  fi
+  python3 - "$f" "$HERE/agent-primer.md" <<'PY'
+import re, sys
+f, src = sys.argv[1], sys.argv[2]
+body = open(src).read().rstrip() + "\n"
+txt = open(f).read()
+pat = re.compile(r"<!-- tess-agent-primer.*?<!-- /tess-agent-primer -->\n?", re.S)
+if pat.search(txt):
+    open(f, "w").write(pat.sub(lambda _: body, txt))
+    print(f"  refreshed the tess primer in: {f}")
+else:
+    open(f, "w").write(txt.rstrip() + ("\n\n" if txt.strip() else "") + body)
+    print(f"  wired tess into: {f}")
+PY
 }
 [ -d "$HOME/.claude" ]     && _inject_primer "$HOME/.claude/CLAUDE.md"       # Claude Code
 [ -d "$HOME/.kimi-code" ]  && _inject_primer "$HOME/.kimi-code/AGENTS.md"    # Kimi

@@ -11,6 +11,7 @@ else
 fi
 
 # --- config: override any of these in ~/.config/tess/config ---
+_VAULT_CONFIGURED=1; [ -z "${TESS_VAULT:-}" ] && _VAULT_CONFIGURED=0   # (re-checked after config loads)
 : "${TESS_VAULT:=$HOME/Documents/tess-vault}"     # your markdown notes vault
 : "${TESS_HUB:=$TESS_VAULT/hub}"                  # where tess writes NOW/people/notes
 : "${TESS_WORKTREE_ROOT:=$HOME/worktrees}"        # where feature worktrees are created
@@ -23,9 +24,11 @@ fi
 # config fills in what the environment didn't set — env always wins, so
 # scripts (tess team, tests) can point a single command at another root.
 if [ -f "$HOME/.config/tess/config" ]; then
+  _prevault="$TESS_VAULT"
   _pre="$(env | grep '^TESS_' || true)"
   . "$HOME/.config/tess/config"
   while IFS='=' read -r _k _v; do [ -n "$_k" ] && eval "$_k=\$_v"; done <<< "$_pre"
+  [ "$TESS_VAULT" != "$_prevault" ] && _VAULT_CONFIGURED=1
 fi
 export TESS_VAULT TESS_HUB TESS_WORKTREE_ROOT TESS_CORE TESS_REPOS TESS_REPOS_ALL TESS_MAIN_BRANCH TESS_STARTUP_OPEN TESS_STARTUP_QUIT
 export TESS_NOTIFY_CONTACT="${TESS_NOTIFY_CONTACT:-}"   # phone pings (tess watch --phone)
@@ -48,7 +51,15 @@ export TESS_HCOM="$HCOM"
 # that line whenever we surface backend output directly. The update mechanism
 # itself is untouched (`tess update` self-updates; `tess hcom update` still runs).
 _TESS_NAG='hcom v[0-9][0-9.]* available'
-_hcom() { $HCOM "$@" 2> >(grep --line-buffered -vE "$_TESS_NAG" >&2); }
+_hcom() {
+  command -v "${HCOM%% *}" >/dev/null 2>&1 || {
+    echo "tess: the fleet backend isn't available — install uv (https://docs.astral.sh/uv) so tess can run it, or install hcom directly." >&2
+    return 127
+  }
+  $HCOM "$@" 2> >(grep --line-buffered -vE "$_TESS_NAG" >&2)
+}
+# external eye-candy/tools: fail with the install hint, not a raw shell error
+_need() { command -v "$1" >/dev/null 2>&1 && return 0; echo "tess: '$1' isn't installed${2:+ — $2}"; return 127; }
 
 # keep tess current: background, throttled (~6h), never blocks
 [ -x "$TESS_LIB/core/update.sh" ] && nohup "$TESS_LIB/core/update.sh" >/dev/null 2>&1 &
@@ -60,101 +71,74 @@ cat <<EOF
   ${D}every stream of work is an isolated session: spawn · watch · steer · ship${R}
 
   ${B}${G}🌳 WORKTREES${R} ${D}(the isolation layer — one worktree per session)${R}
-     ${C}tess new${R} ${D}<name>${R}     new feature worktree — the repo you're in, or your configured set
-     ${C}tess new${R} ${D}<repo> <name>${R}  any repo by name (never guesses — unknown repo is an error)
-     ${C}tess new${R} ${D}… --fleet|--all|--base <br>${R}  force your set · + optional repos · pick the base branch
-     ${C}tess repos${R}          the repo map — every repo on disk, ranked by use
-     ${C}tess ls${R}             list your feature folders
-     ${C}tess rm${R} ${D}<name>${R}       delete a feature (clean way)
-     ${C}tess env${R} ${D}<name>${R}      refresh .env files into a feature
-     ${C}tess clean${R}          clear dead worktree junk
-     ${C}tess branches${R}       delete old merged branches (safe)
-     ${C}tess path${R} ${D}<feat> [repo]${R}  print a worktree's path (for cd)
-     ${C}tess wt${R}             worktree status across repos
+     ${C}tess new${R} ${D}<name>${R}               the repo you're in — or, outside a repo, your configured set
+     ${C}tess new${R} ${D}<repo> <name>${R}        any repo on disk by name ${D}(unknown repo = error, never a guess)${R}
+     ${C}tess new${R} ${D}… --repo a,b · --fleet · --all · --base <branch>${R}
+     ${C}tess repos${R}                    the repo map — every repo on disk, ranked by use
+     ${C}tess wt${R}                       worktree status — every feature: repos, branch, dirty
+     ${C}tess ls${R} · ${C}rm${R} ${D}<name>${R}           list features · tear one down
+     ${C}tess env${R} ${D}<name>${R}               refresh .env files into a feature (any repo)
+     ${C}tess path${R} ${D}<feat> [repo]${R}       print a worktree's path — ${D}cd "\$(tess path <feat>)"${R}
+     ${C}tess clean${R} · ${C}branches${R}         sweep dead worktrees · delete merged branches
 
-  ${B}${G}📋 TODOS${R} ${D}(persistent coding checklist — every new session sees the open ones)${R}
-     ${C}tess todo${R}            list open todos ${D}(${C}tess todo add${R} <text> · ${C}done${R} <id> · ${C}all${R})${R}
+  ${B}${G}📋 TODOS${R} ${D}(persistent checklist — every new agent session sees the open ones)${R}
+     ${C}tess todo${R}                     list open ${D}(${C}add${R} <text> · ${C}done${R} <id> · ${C}rm${R} <id> · ${C}all${R})${R}
 
   ${B}${G}🤖 SESSIONS${R} ${D}(worktree + agent + context — spawn one, resume any)${R}
-     ${C}tess claude${R} ${D}[feat] ["task"] [--model M --effort E]${R}  spawn Claude — worktree auto-created, settings VERIFIED
-     ${C}tess kimi${R} ${D}[feat] ["task"] …${R}   same for Kimi (own models + thinking level)
-     ${C}tess think${R}          thinking partner — company brain, researches while you talk
-     ${C}tess post${R}           daily content partner — your voice, learns your taste
-     ${C}tess resume${R}         resume ANY past Claude/Kimi session (any folder)
-     ${C}tess local${R} ${D}[prompt]${R}  offline AI — no internet (also ${C}tess small${R} / ${C}tess big${R})
-     ${C}tess ask${R} ${D}"<q>"${R}      ask in words — routes to the right thing + speaks it
-     ${C}tess listen${R}         hands-free — just say "tess, <what you want>"
-     ${C}tess voice${R}          type/dictate loop (Wispr Flow)
-     ${C}tess loop${R} ${D}<claude|kimi> "<goal>"${R}  autonomous — it drives itself till done
+     ${C}tess claude${R}|${C}kimi${R} ${D}[feat] ["task"] [--model M --effort E --readonly --auto --budget N]${R}
+                                 spawn — worktree auto-created, settings VERIFIED, roles ENFORCED
+     ${C}tess resume${R}                   resume ANY past Claude/Kimi session (any folder)
+     ${C}tess think${R} · ${C}post${R}             thinking partner · content partner ${D}(both use your vault)${R}
+     ${C}tess local${R} ${D}[prompt]${R}           offline AI via ollama ${D}(also ${C}tess small${R} / ${C}big${R})${R}
+     ${C}tess ask${R} ${D}"<q>"${R} · ${C}listen${R} · ${C}voice${R}  say it in words — routed + spoken ${D}(listen = hands-free)${R}
+     ${C}tess loop${R} ${D}<claude|kimi> "<goal>"${R}  autonomous manager→worker loop till DONE
 
-  ${B}${G}🚁 THE FLEET${R} ${D}(drive MANY agents at once — you are @bigboss)${R}
-     ${C}tess team${R} ${D}<spec.yaml>${R}   fan out N agents in one shot (prompts/models/roles) ${D}--dry-run first${R}
-     ${C}tess orchestrate${R} ${D}"<goal>"${R}  hire an AI lead to run the fleet for you
-     ${C}tess boss${R}          your interactive orchestrator across all projects
-     ${C}tess status${R}         fleet at a glance — BLOCKED agents first  ${D}(--json for scripts)${R}
-     ${C}tess digest${R}         everyone's last report, merged
-     ${C}tess report${R} ${D}<agent>${R}  one agent's FULL last message
-     ${C}tess inbox${R}          your unread mail from the fleet
-     ${C}tess tell${R} ${D}<agent|feat|all> -- <msg>${R}  speak as @bigboss (safe @-escaping)
-     ${C}tess wait${R} ${D}<feat|all>${R}   block until done — exit 2 = someone needs approval
-     ${C}tess watch on${R} ${D}[--phone]${R}  escalations: BLOCKED/IDLE/DIED agents ping the lead (or your iPhone)
-     ${C}tess approve${R} ${D}<agent>${R}  answer a blocked agent's approval dialog
+  ${B}${G}🚁 THE FLEET${R} ${D}(drive MANY sessions at once — you are @bigboss · backend needs uv)${R}
+     ${C}tess team${R} ${D}<spec.yaml>${R}         fan out N agents (prompts/models/roles) ${D}--dry-run first${R}
+     ${C}tess orchestrate${R} ${D}"<goal>"${R}     hire an AI lead ${D}('off' takes command back)${R}
+     ${C}tess boss${R}                     interactive orchestrator across all your projects
+     ${C}tess status${R} · ${C}digest${R}          fleet table (BLOCKED first ${D}· --json${R}) · everyone's last report
+     ${C}tess report${R} ${D}<agent>${R} · ${C}diff${R} ${D}<agent|feat>${R}  one FULL report · what actually changed
+     ${C}tess tell${R} ${D}<agent|feat|all> -- <msg>${R}   steer, as @bigboss (safe @-escaping)
      ${C}tess inject${R} ${D}<agent> -- <text>${R}  force a prompt into its terminal (waits + confirms)
-     ${C}tess diff${R} ${D}<agent|feat>${R}  what they actually changed
-     ${C}tess ship${R} ${D}<feat>${R}       diff → tests → push → PR  ${D}(--merge)${R}
-     ${C}tess done${R} ${D}<feat>${R}       kill agents + panes + worktrees, all at once
-     ${C}tess spend${R}          budget ledger (--budget caps are enforced)
-     ${C}tess agents${R}         live dashboard · ${C}tess kill${R} ${D}<agent|feat>${R}
+     ${C}tess approve${R} ${D}<agent>${R}          answer a blocked approval dialog
+     ${C}tess wait${R} ${D}<feat|all>${R}          block until done — exit 2 = someone needs approval
+     ${C}tess watch on${R} ${D}[--phone]${R}       escalations: BLOCKED/IDLE/DIED pings the lead (or your phone)
+     ${C}tess inbox${R} · ${C}spend${R}            your fleet mail · budget ledger (caps enforced at spawn)
+     ${C}tess ship${R} ${D}<feat> [--merge]${R}    diff → tests → push → PR
+     ${C}tess done${R} ${D}<feat>${R}              teardown: kill agents + panes + worktrees
+     ${C}tess agents${R} · ${C}kill${R} ${D}<agent|feat>${R}  live dashboard · kill
 
-  ${B}${G}⚡ TOOLS${R}
-     ${C}tess git${R}            visual git — branches/commits (lazygit)
-     ${C}z${R} ${D}<name>${R}           jump to any folder you've visited
-     ${C}Ctrl+R${R}             search your command history
-     ${C}ll${R} / ${C}lt${R}            pretty file list / tree view
+  ${B}${G}🧠 BRAIN${R} ${D}(optional · any markdown notes vault — set TESS_VAULT; on-demand, no token cost)${R}
+     ${C}tess${R} ${D}<name>${R}                   read a note — a person, company, topic
+     ${C}tess people${R} · ${C}companies${R} · ${C}reminders${R}   rosters · every open follow-up
+     ${C}tess add${R} ${D}<name> -- <text>${R}     append to a note (creates it if new)
+     ${C}tess person${R}|${C}company${R} ${D}<name> -- <desc>${R}  new contact/company note (shows in roster)
+     ${C}tess log${R} ${D}-- <text>${R} · ${C}brief${R} · ${C}hub${R}   quick capture · your NOW note · your hub note
 
-  ${B}${G}🐾 FUN${R}
-     ${C}tess fish${R}           ascii aquarium      ${C}tess matrix${R}   matrix rain
-     ${C}tess bonsai${R}         growing bonsai      ${C}tess dex${R}      random pokemon
-     ${C}tess pipes${R}          pipes screensaver
-
-  ${B}${G}🧠 BRAIN${R} ${D}(optional · a markdown notes vault — on-demand, no token cost)${R}
-     ${C}tess${R} ${D}<name>${R}        show a note — e.g. ${C}tess john${R} · ${C}tess acme${R}
-     ${C}tess people${R}         roster — everyone, with a one-liner
-     ${C}tess companies${R}      companies you track
-     ${C}tess reminders${R}      open follow-ups / to-dos
-     ${C}tess person${R} ${D}<name> -- <desc>${R}   add a person (shows in roster)
-     ${C}tess company${R} ${D}<name> -- <desc>${R}  add a company
-     ${C}tess add${R} ${D}<name> -- <text>${R}  add/append to a note (creates if new)
-     ${C}tess log${R} ${D}-- <text>${R}   quick timestamped capture
-     ${C}tess brief${R}          what's going on right now (NOW.md)
-     ${C}tess company${R}        your hub note
-
-  ${B}${G}📱 LIFE${R} ${D}(optional · macOS — needs permission, one-time)${R}
-     ${C}tess calendar${R} ${D}[days]${R}  upcoming events
-     ${C}tess messages${R} ${D}[who]${R}   recent iMessages/SMS
-     ${C}tess chat${R} ${D}<name>${R}      full conversation + inline images
-     ${C}tess send${R} ${D}<name> -- <msg>${R}  send an iMessage
-     ${C}tess calls${R}          recent call log
-     ${C}tess mail${R} ${D}[query]${R}     email — ${C}read${R} ${D}<id>${R} · ${C}search${R} · ${C}send${R}/${C}reply${R} ${D}(confirmed)${R} · ${C}flag${R}/${C}archive${R}/${C}move${R}…
-     ${C}tess read${R} ${D}[title]${R}     reading companion for your current book
-     ${C}tess music${R} ${D}[lib|top|stats]${R}  Apple Music — play, sort/filter the whole library, playlists
+  ${B}${G}📱 LIFE${R} ${D}(optional · macOS, local — grant permissions once)${R}
+     ${C}tess calendar${R} ${D}[days]${R} · ${C}messages${R} ${D}[who]${R} · ${C}chat${R} ${D}<name>${R} · ${C}calls${R}
+     ${C}tess send${R} ${D}<name> -- <msg>${R}     send an iMessage ${D}(always confirmed)${R}
+     ${C}tess mail${R} ${D}[query]${R}             email — ${C}read${R} ${D}<id>${R} · ${C}search${R} · ${C}send${R}/${C}reply${R} ${D}(confirmed)${R} · ${C}flag${R}/${C}archive${R}/${C}move${R}
+     ${C}tess music${R} ${D}[lib|top|stats]${R}    Apple Music — play + sort/filter the whole library, build playlists
+     ${C}tess read${R} ${D}[title]${R}             reading companion for your current Apple Book
 
   ${B}${G}🖥️  APPS & STARTUP${R}
-     ${C}tess${R} ${D}<app>${R}         open any app — e.g. ${C}tess chrome${R} · ${C}tess arc${R}
-     ${C}tess apps${R}           fuzzy-pick an app to open
-     ${C}tess login${R}          what opens at login (rm/add to stop the flood)
-     ${C}tess startup${R}         open your configured app set; ${C}install${R} to run at login
+     ${C}tess${R} ${D}<app>${R} · ${C}apps${R}             open any app by name · fuzzy-pick one
+     ${C}tess login${R}                    what opens at login ${D}(${C}rm${R}/${C}add${R} to edit)${R}
+     ${C}tess startup${R}                  open your configured set ${D}(${C}install${R} = run at login)${R}
 
   ${B}${G}🩺 SYSTEM${R}
-     ${C}tess doctor${R}         check your Mac's health (file limits, disk)
-     ${C}tess fix-files${R}      permanently raise the macOS open-file limit
-     ${C}tess disk${R}           disk usage of your worktrees (slow)
-     ${C}tess cheat${R}          open the full cheatsheet
-     ${C}tess update${R}         pull the latest tess (auto-runs in bg too)
-     ${C}tess commands${R}       your custom commands (survive updates)
-     ${C}tess help${R} ${D}<cmd>${R}     detailed help for one command
+     ${C}tess git${R}                      visual git — branches/commits (lazygit)
+     ${C}tess doctor${R} · ${C}disk${R}            health check · worktree disk usage
+     ${C}tess update${R} · ${C}commands${R}        pull the latest · your custom commands (survive updates)
+     ${C}tess cheat${R} · ${C}help${R} ${D}<cmd>${R}       the full cheatsheet · detailed help for one command
+     ${C}tess fix-files${R}                permanently raise the macOS open-file limit
 
-  ${D}type ${R}${C}tess help${R}${D} anytime to see this again${R}
+  ${B}${G}🐾 FUN${R} ${D}(each needs its tool installed — tess tells you which)${R}
+     ${C}tess fish${R} · ${C}matrix${R} · ${C}bonsai${R} · ${C}pipes${R} · ${C}dex${R}
+
+  ${D}type ${R}${C}tess help <command>${R}${D} for details on any one${R}
 
 EOF
   local cdir="$HOME/.config/tess/commands"
@@ -169,7 +153,17 @@ EOF
 VAULT="$TESS_VAULT"
 HUB="$TESS_HUB"
 _show() { command -v bat >/dev/null 2>&1 && bat --style=plain --paging=never "$1" || cat "$1"; }
+_vault_ok() {
+  # explicitly configured vault: self-scaffold. Unconfigured default: guide, don't
+  # silently create ~/Documents/tess-vault behind the user's back.
+  [ -d "$VAULT" ] && return 0
+  if [ "$_VAULT_CONFIGURED" = 1 ]; then mkdir -p "$HUB" 2>/dev/null && return 0; fi
+  echo "no notes vault yet — the brain features are optional. Point TESS_VAULT at any"
+  echo "markdown folder in ~/.config/tess/config (Obsidian/Lokus/plain files all work)."
+  return 1
+}
 _lookup() {
+  _vault_ok || return 1
   local q="$*" exact matches n file pick
   # 1) exact note-name match wins
   exact=$(find "$VAULT" -type f -iname "${q}.md" -not -path "*/.*/*" 2>/dev/null | head -1)
@@ -191,6 +185,7 @@ _lookup() {
 
 _add() {
   # tess add <note name...> -- <text...>   (creates the note if missing)
+  _vault_ok || return 1
   local name="" text="" seen=0 a file
   for a in "$@"; do
     if [ "$a" = "--" ]; then seen=1; continue; fi
@@ -211,6 +206,7 @@ _add() {
 }
 _newnote() {
   # _newnote <subdir> <tag> <name...> -- <description...>
+  _vault_ok || return 1
   local sub="$1" tag="$2"; shift 2
   local name="" desc="" seen=0 a file
   for a in "$@"; do
@@ -233,6 +229,7 @@ _newnote() {
 }
 _log() {
   # tess log -- <text>   quick timestamped capture into the running log
+  _vault_ok || return 1
   local text="$*"; text="${text#-- }"
   [ -z "$text" ] && { printf "log: "; read -r text; }
   mkdir -p "$HUB"; local f="$HUB/Log.md"
@@ -489,14 +486,14 @@ case "$cmd" in
     ;;
 
   # tools -------------------------------------------------------------------
-  git|lg)   exec lazygit ;;
+  git|lg)   _need lazygit "brew install lazygit" && exec lazygit ;;
 
   # fun ---------------------------------------------------------------------
-  fish)     exec asciiquarium ;;
-  matrix)   exec cmatrix -b ;;
-  bonsai)   exec cbonsai -l -i ;;
-  pipes)    exec pipes.sh ;;
-  dex)      pokemon-colorscripts -r ;;
+  fish)     _need asciiquarium "brew install asciiquarium" && exec asciiquarium ;;
+  matrix)   _need cmatrix "brew install cmatrix" && exec cmatrix -b ;;
+  bonsai)   _need cbonsai "brew install cbonsai" && exec cbonsai -l -i ;;
+  pipes)    _need pipes.sh "brew install pipes-sh" && exec pipes.sh ;;
+  dex)      _need pokemon-colorscripts "https://gitlab.com/phoneybadger/pokemon-colorscripts" && pokemon-colorscripts -r ;;
 
   # system doctor -----------------------------------------------------------
   doctor)
@@ -547,8 +544,8 @@ PL
     ;;
 
   # --- brain / notes ---
-  brief)    _show "$HUB/NOW.md" ;;
-  hub)      _show "$HUB/hub.md" ;;
+  brief)    _vault_ok && { [ -f "$HUB/NOW.md" ] && _show "$HUB/NOW.md" || echo "no NOW note yet — start it: tess add NOW -- <what's going on>"; } ;;
+  hub)      _vault_ok && { [ -f "$HUB/hub.md" ] && _show "$HUB/hub.md" || echo "no hub note yet — start it: tess add hub -- <text>"; } ;;
   person)   _newnote "People" "person" "$@" ;;
   company)  if [ $# -gt 0 ]; then _newnote "Companies" "company" "$@"; else _show "$HUB/hub.md"; fi ;;
   add)      _add "$@" ;;

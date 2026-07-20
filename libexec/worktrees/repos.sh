@@ -30,7 +30,7 @@ _roots() {
 _activity() {  # newest of HEAD / index / FETCH_HEAD mtimes — "when did you last touch it"
   local g="$1/.git" m=0 t f
   for f in HEAD index FETCH_HEAD; do
-    t="$(stat -f %m "$g/$f" 2>/dev/null || echo 0)"
+    t="$(stat -f %m "$g/$f" 2>/dev/null || stat -c %Y "$g/$f" 2>/dev/null || echo 0)"
     [ "$t" -gt "$m" ] && m="$t"
   done
   echo "$m"
@@ -77,7 +77,7 @@ _index() {
 
 _fresh() {   # rebuild if missing or >1 day old
   [ -s "$CACHE" ] || { _index; return; }
-  local age; age=$(stat -f %m "$CACHE" 2>/dev/null || echo 0)
+  local age; age=$(stat -f %m "$CACHE" 2>/dev/null || stat -c %Y "$CACHE" 2>/dev/null || echo 0)
   [ $((NOW - age)) -gt 86400 ] && _index || true
 }
 

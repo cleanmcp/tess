@@ -23,6 +23,9 @@ else
   B=; D=; R=; C=; G=; Y=; M=
 fi
 
+# in-place sed: BSD sed wants -i '' , GNU sed wants bare -i
+if sed --version >/dev/null 2>&1; then _sedi() { sed -i "$@"; }; else _sedi() { sed -i '' "$@"; }; fi
+
 # current project tag: the git repo name if we're in one, else the cwd name
 _project() {
   local top; top="$(git rev-parse --show-toplevel 2>/dev/null)" && { basename "$top"; return; }
@@ -81,12 +84,12 @@ _add() {
 
 _setbox() {  # $1=id $2=' '|x
   _has "$1" || { echo "no todo ($1)"; return 1; }
-  sed -i '' -E "s#^- \[.\] \($1\)#- [$2] ($1)#" "$FILE"
+  _sedi -E "s#^- \[.\] \($1\)#- [$2] ($1)#" "$FILE"
 }
 _done()   { local ok=1; for id in "$@"; do _setbox "$id" x  && { printf '%s✓%s done (%s)\n' "$G" "$R" "$id"; ok=0; }; done; return $ok; }
 _reopen() { for id in "$@"; do _setbox "$id" ' ' && printf 'reopened (%s)\n' "$id"; done; }
-_rm()     { for id in "$@"; do _has "$id" && { sed -i '' -E "/^- \[.\] \($id\)/d" "$FILE"; echo "removed ($id)"; } || echo "no todo ($id)"; done; }
-_clear()  { local n; n=$(_count '^- \[x\]'); sed -i '' -E '/^- \[x\] /d' "$FILE"; echo "cleared $n completed"; }
+_rm()     { for id in "$@"; do _has "$id" && { _sedi -E "/^- \[.\] \($id\)/d" "$FILE"; echo "removed ($id)"; } || echo "no todo ($id)"; done; }
+_clear()  { local n; n=$(_count '^- \[x\]'); _sedi -E '/^- \[x\] /d' "$FILE"; echo "cleared $n completed"; }
 
 _list() {  # $1 = "all" to include completed
   local open done_

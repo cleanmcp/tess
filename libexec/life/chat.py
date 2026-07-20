@@ -20,7 +20,6 @@ ql = q.lower()
 matching = [cid for cid, lab in labels.items() if ql in lab.lower()]
 if not matching:
     # try matching by number/handle
-    matching = [cid for cid, lab in labels.items()]  # fall through; filter by handle below
     hits = con.execute("""SELECT DISTINCT cmj.chat_id FROM message m
         JOIN chat_message_join cmj ON cmj.message_id=m.ROWID
         JOIN handle h ON m.handle_id=h.ROWID WHERE h.id LIKE ?""", (f"%{q}%",)).fetchall()

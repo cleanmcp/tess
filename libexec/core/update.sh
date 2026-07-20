@@ -12,7 +12,8 @@ force="${1:-}"
 stamp="$HOME/.config/tess/.last-update"
 
 if [ "$force" != "--now" ]; then
-  now=$(date +%s); last=$([ -f "$stamp" ] && stat -f %m "$stamp" 2>/dev/null || echo 0)
+  now=$(date +%s)
+  last=$(stat -f %m "$stamp" 2>/dev/null || stat -c %Y "$stamp" 2>/dev/null || echo 0)
   [ $((now - last)) -lt 21600 ] && exit 0            # throttle: at most once / 6h
 fi
 mkdir -p "$(dirname "$stamp")"; touch "$stamp"

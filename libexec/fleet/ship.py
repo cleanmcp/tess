@@ -94,7 +94,12 @@ def cmd_ship(args):
             continue
         print("  ✓ pushed")
 
-        pr = sh(rdir, "gh", "pr", "create", "--fill", "--base", base)
+        try:
+            pr = sh(rdir, "gh", "pr", "create", "--fill", "--base", base)
+        except FileNotFoundError:
+            print("  ⚠ pushed, but the GitHub CLI isn't installed — open the PR yourself (brew install gh)")
+            shipped.append(repo)
+            continue
         if pr.returncode == 0:
             url = pr.stdout.strip().splitlines()[-1] if pr.stdout.strip() else ""
             print(f"  ✓ PR: {url}")
