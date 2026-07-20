@@ -1,0 +1,100 @@
+#!/usr/bin/env bash
+# wt — convenience wrapper around worktree.sh (multi-repo feature worktrees)
+#   wt [<repo>] <feature> [--repo a,b] [--fleet|--all] [--base <branch>]
+#                              create worktrees, then open the feature in cmux
+#   wt rm <feature>            tear the feature's worktrees back down
+#   wt ls                      list existing feature worktrees in $TESS_WORKTREE_ROOT
+#   wt prune                   clear stale registrations + sweep ghost feature shells
+# Worktrees land at <worktree-root>/<feature>/<repo>.
+set -euo pipefail
+# config fills in what the environment didn't set — env always wins
+if [ -f "$HOME/.config/tess/config" ]; then
+  _pre="$(env | grep '^TESS_' || true)"
+  . "$HOME/.config/tess/config"
+  while IFS='=' read -r _k _v; do [ -n "$_k" ] && eval "$_k=\$_v"; done <<< "$_pre"
+fi
+
+ROOT="${TESS_WORKTREE_ROOT:-$HOME/worktrees}"
+# use the worktree.sh sitting next to THIS script (works from a repo checkout too)
+_src="${BASH_SOURCE[0]}"; while [ -L "$_src" ]; do _src="$(readlink "$_src")"; done
+SCRIPT="$(cd "$(dirname "$_src")" && pwd)/worktree.sh"
+[ -x "$SCRIPT" ] || { echo "wt: worktree.sh not found/executable next to wt" >&2; exit 1; }
+
+case "${1:-ls}" in
+  -h|--help)
+    sed -n '2,8p' "$0" | sed 's/^# \{0,1\}//'; exit 0
+    ;;
+  ls|list|"")
+    # real worktree state, not just folders: a feature is LIVE if a repo
+    # subfolder is an actual git worktree; otherwise it's a ghost shell.
+    find "$ROOT" -mindepth 1 -maxdepth 1 -type d ! -name '.*' ! -name "$(basename "${TESS_CORE:-repos}")" -print0 |
+    while IFS= read -r -d '' f; do
+      feat="$(basename "$f")"; live=""
+      [ -e "$f/.git" ] && live="self"   # the dir itself is a checkout/worktree
+      for sub in "$f"/*/; do
+        [ -e "${sub%/}/.git" ] && live="${live:+$live }$(basename "$sub")"
+      done
+      if [ -n "$live" ]; then printf '%s\t[%s]\n' "$feat" "$live"
+      else printf '%s\t(ghost — no worktrees; tess clean removes it)\n' "$feat"; fi
+    done | sort | column -t -s$'\t'
+    exit 0
+    ;;
+  rm|remove)
+    shift; exec "$SCRIPT" rm "$@"
+    ;;
+  prune)
+    # 1) clear stale worktree registrations in every SOURCE repo the features
+    #    point at (via each worktree's own gitdir pointer) + the configured fleet
+    srcs=""
+    for f in "$ROOT"/*/; do
+      [ -d "$f" ] || continue
+      for sub in "$f"*/; do
+        [ -f "${sub%/}/.git" ] || continue
+        gd="$(sed -n 's/^gitdir: //p' "${sub%/}/.git" 2>/dev/null || true)"
+        case "$gd" in */.git/worktrees/*) srcs="$srcs${gd%/.git/worktrees/*}"$'\n' ;; esac
+      done
+    done
+    for r in ${TESS_REPOS_ALL:-${TESS_REPOS:-}}; do
+      d="${TESS_CORE:-$ROOT/repos}/$r"; [ -d "$d" ] && srcs="$srcs$d"$'\n'
+    done
+    printf '%s' "$srcs" | sort -u | while IFS= read -r d; do
+      [ -n "$d" ] && [ -d "$d" ] || continue
+      echo "== $(basename "$d") =="; git -C "$d" worktree prune -v 2>/dev/null || true
+    done
+    # 2) sweep ghost feature shells: folders with no live worktree inside and
+    #    nothing in them beyond tess's own orientation files
+    find "$ROOT" -mindepth 1 -maxdepth 1 -type d ! -name '.*' ! -name "$(basename "${TESS_CORE:-repos}")" -print0 |
+    while IFS= read -r -d '' f; do
+      live=0
+      [ -e "$f/.git" ] && live=1        # the dir itself is a checkout/worktree
+      for sub in "$f"/*/; do [ -e "${sub%/}/.git" ] && { live=1; break; }; done
+      [ "$live" = 1 ] && continue
+      leftovers="$(ls -A "$f" 2>/dev/null | grep -vx 'AGENTS.md' | grep -vx 'CLAUDE.md' || true)"
+      if [ -z "$leftovers" ]; then
+        rm -f "$f/AGENTS.md" "$f/CLAUDE.md"; rmdir "$f" 2>/dev/null \
+          && echo "swept ghost feature: $(basename "$f")"
+      else
+        echo "ghost feature '$(basename "$f")' kept — still contains: $(echo "$leftovers" | tr '\n' ' ')"
+      fi
+    done
+    echo "done. (orphan branches left intact — delete with: git -C <source-repo> branch -D <name>)"
+    exit 0
+    ;;
+esac
+
+# create mode — run the real script, then open the new feature folder in cmux.
+# Grammar is deterministic: the feature is the LAST positional ([repo] <feature>).
+"$SCRIPT" "$@"
+
+feat=""; _skip=0
+for a in "$@"; do
+  [ "$_skip" = 1 ] && { _skip=0; continue; }
+  case "$a" in
+    --repo|--base) _skip=1 ;;
+    -*) ;;
+    *) feat="$a" ;;
+  esac
+done
+if [ -n "$feat" ] && [ -d "$ROOT/$feat" ]; then
+  cmux open "$ROOT/$feat" >/dev/null 2>&1 && echo "→ opened $ROOT/$feat in cmux" || true
+fi

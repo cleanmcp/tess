@@ -6,7 +6,10 @@ TESS_CORE="$TESS_WORKTREE_ROOT/repos"        # your source repos live here (one 
 TESS_REPOS="app api"                         # your "fleet": repos to fan out together (space-separated).
                                              # `tess new` inside any OTHER git repo targets just that repo.
 TESS_REPOS_ALL="app api web"                 # repos incl. optional ones (used by `tess new --all`)
-# TESS_GIT_REMOTE="https://github.com/your-org"  # optional: auto-clone missing repos from here
+# TESS_GIT_REMOTE="your-org"                 # optional: auto-clone missing fleet repos. A bare name
+                                             # means github.com/<name>; a full base URL also works
+                                             # (https://github.com/your-org · git@github.com:your-org)
+# TESS_REPO_DIRS=""                          # extra roots for the repo map (tess repos), space-separated
 
 # ── Fleet (optional; for tess team/watch/ship) ──
 # TESS_TEST_CMD="npm test"                   # run in each repo before `tess ship` pushes

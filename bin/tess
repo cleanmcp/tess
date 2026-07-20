@@ -18,7 +18,7 @@ fi
 : "${TESS_REPOS:=}"                               # default repos to fan out (space-separated)
 : "${TESS_REPOS_ALL:=$TESS_REPOS}"                # repos incl. optional ones (used by --all)
 : "${TESS_MAIN_BRANCH:=main}"                     # default branch (for `tess branches`)
-: "${TESS_STARTUP_OPEN:=cmux Music Safari}"      # apps `tess startup` opens
+: "${TESS_STARTUP_OPEN:=}"                        # apps `tess startup` opens (set in config)
 : "${TESS_STARTUP_QUIT:=}"                        # apps `tess startup` quits (the login flood)
 # config fills in what the environment didn't set — env always wins, so
 # scripts (tess team, tests) can point a single command at another root.
@@ -31,11 +31,14 @@ export TESS_VAULT TESS_HUB TESS_WORKTREE_ROOT TESS_CORE TESS_REPOS TESS_REPOS_AL
 export TESS_NOTIFY_CONTACT="${TESS_NOTIFY_CONTACT:-}"   # phone pings (tess watch --phone)
 export TESS_MAIL_FROM="${TESS_MAIL_FROM:-}"             # default From account (tess mail send)
 
-# helpers live next to THIS script (resolve the symlink) — so a repo checkout
-# runs its own helpers, and the installed copy keeps one consistent version.
+# helpers live in <repo>/libexec, resolved relative to THIS script (through the
+# symlink) — so a repo checkout runs its own helpers, and the installed copy
+# keeps one consistent version. Layout: bin/tess + libexec/<domain>/<helper>.
 _src="${BASH_SOURCE[0]}"; while [ -L "$_src" ]; do _src="$(readlink "$_src")"; done
 TESS_BIN="$(cd "$(dirname "$_src")" && pwd)"
-export TESS_BIN
+TESS_HOME="$(cd "$TESS_BIN/.." && pwd)"
+TESS_LIB="$TESS_HOME/libexec"
+export TESS_BIN TESS_HOME TESS_LIB
 # hcom may be a real install or run via uvx (unquoted $HCOM is intentional)
 command -v hcom >/dev/null 2>&1 && HCOM=hcom || HCOM="uvx hcom"
 export TESS_HCOM="$HCOM"
@@ -48,7 +51,7 @@ _TESS_NAG='hcom v[0-9][0-9.]* available'
 _hcom() { $HCOM "$@" 2> >(grep --line-buffered -vE "$_TESS_NAG" >&2); }
 
 # keep tess current: background, throttled (~6h), never blocks
-[ -x "$TESS_BIN/_tess-update.sh" ] && nohup "$TESS_BIN/_tess-update.sh" >/dev/null 2>&1 &
+[ -x "$TESS_LIB/core/update.sh" ] && nohup "$TESS_LIB/core/update.sh" >/dev/null 2>&1 &
 
 menu() {
 cat <<EOF
@@ -57,9 +60,9 @@ cat <<EOF
   ${D}every stream of work is an isolated session: spawn · watch · steer · ship${R}
 
   ${B}${G}🌳 WORKTREES${R} ${D}(the isolation layer — one worktree per session)${R}
-     ${C}tess new${R} ${D}[name]${R}     new feature worktree — the repo you're in, or your configured set
-     ${C}tess new${R} ${D}<repo> <name>${R}  any repo by name — smart-picks the copy you actually use
-     ${C}tess new --all${R} ${D}name${R}  ...include optional repos · ${D}--fleet${R} force your set
+     ${C}tess new${R} ${D}<name>${R}     new feature worktree — the repo you're in, or your configured set
+     ${C}tess new${R} ${D}<repo> <name>${R}  any repo by name (never guesses — unknown repo is an error)
+     ${C}tess new${R} ${D}… --fleet|--all|--base <br>${R}  force your set · + optional repos · pick the base branch
      ${C}tess repos${R}          the repo map — every repo on disk, ranked by use
      ${C}tess ls${R}             list your feature folders
      ${C}tess rm${R} ${D}<name>${R}       delete a feature (clean way)
@@ -140,7 +143,7 @@ cat <<EOF
      ${C}tess${R} ${D}<app>${R}         open any app — e.g. ${C}tess chrome${R} · ${C}tess arc${R}
      ${C}tess apps${R}           fuzzy-pick an app to open
      ${C}tess login${R}          what opens at login (rm/add to stop the flood)
-     ${C}tess startup${R}         open your set (cmux/Music/…); ${C}install${R} to run at login
+     ${C}tess startup${R}         open your configured app set; ${C}install${R} to run at login
 
   ${B}${G}🩺 SYSTEM${R}
      ${C}tess doctor${R}         check your Mac's health (file limits, disk)
@@ -237,6 +240,15 @@ _log() {
   printf -- "- **%s** — %s\n" "$(date '+%Y-%m-%d %H:%M')" "$text" >> "$f"
   echo "✓ logged"
 }
+_mode() {
+  # _mode <name> — path of an agent-mode prompt. Your override in
+  # ~/.config/tess/modes wins, then the repo's copy (always present, stays
+  # current with `tess update`), then a legacy ~/.claude/modes install.
+  for m in "$HOME/.config/tess/modes/$1.md" "$TESS_HOME/modes/$1.md" "$HOME/.claude/modes/$1.md"; do
+    [ -f "$m" ] && { echo "$m"; return 0; }
+  done
+  echo "tess: mode '$1' not found (looked in ~/.config/tess/modes, $TESS_HOME/modes)" >&2; return 1
+}
 _localrun() {
   # _localrun <tier> [prompt...]  — run the local model for that size tier
   command -v ollama >/dev/null 2>&1 || { echo "ollama not installed (brew install ollama)"; return 1; }
@@ -259,7 +271,7 @@ cmd="${1:-menu}"; shift 2>/dev/null || true
 case "$cmd" in
   hcom) ;;
   *) for _a in "$@"; do case "$_a" in
-       -h|--help) exec bash "$TESS_BIN/_tess-help.sh" "$cmd" ;;
+       -h|--help) exec bash "$TESS_LIB/core/help.sh" "$cmd" ;;
        --) break ;;
      esac; done ;;
 esac
@@ -282,9 +294,9 @@ _validname() {  # _validname <name> <what> — reject flag-like/reserved/path-un
 
 case "$cmd" in
   menu|""|-h|--help) menu ;;
-  help) if [ $# -gt 0 ]; then exec bash "$TESS_BIN/_tess-help.sh" "$@"; else menu; fi ;;
-  update)   exec bash "$TESS_BIN/_tess-update.sh" --now ;;
-  todo|todos)    exec bash "$TESS_BIN/_tess-todo.sh" "$@" ;;
+  help) if [ $# -gt 0 ]; then exec bash "$TESS_LIB/core/help.sh" "$@"; else menu; fi ;;
+  update)   exec bash "$TESS_LIB/core/update.sh" --now ;;
+  todo|todos)    exec bash "$TESS_LIB/core/todo.sh" "$@" ;;
   commands|custom)
     cdir="$HOME/.config/tess/commands"; mkdir -p "$cdir"
     case "${1:-list}" in
@@ -304,49 +316,84 @@ case "$cmd" in
     esac ;;
 
   # apps + login/startup
-  open|app|launch) exec bash "$TESS_BIN/_tess-apps.sh" open "$@" ;;
-  apps)     exec bash "$TESS_BIN/_tess-apps.sh" apps ;;
-  login)    exec bash "$TESS_BIN/_tess-apps.sh" login "$@" ;;
-  startup)  exec bash "$TESS_BIN/_tess-apps.sh" startup "$@" ;;
+  open|app|launch) exec bash "$TESS_LIB/life/apps.sh" open "$@" ;;
+  apps)     exec bash "$TESS_LIB/life/apps.sh" apps ;;
+  login)    exec bash "$TESS_LIB/life/apps.sh" login "$@" ;;
+  startup)  exec bash "$TESS_LIB/life/apps.sh" startup "$@" ;;
 
   # worktrees ---------------------------------------------------------------
-  new)      # validate the feature name (first non-flag arg); base branch is untouched
-    _skip=0
+  new)      # grammar: tess new [<repo>] <feature> [--repo a,b] [--fleet|--all] [--base <br>]
+    # the feature is the LAST positional — validate that one; repo names are
+    # checked by worktree.sh itself (unknown repo = clean error, never reinterpreted)
+    _feat=""; _skip=0
     for _a in "$@"; do
       [ "$_skip" = 1 ] && { _skip=0; continue; }
-      case "$_a" in --all|--web|--fleet) ;; --repo) _skip=1 ;; *) _validname "$_a" "feature name" || exit 2; break ;; esac
+      case "$_a" in --repo|--base) _skip=1 ;; -*) ;; *) _feat="$_a" ;; esac
     done
-    "$TESS_BIN/wt" "$@" ;;
-  repos)    exec bash "$TESS_BIN/_tess-repos.sh" "$@" ;;
-  ls|list)  echo "${B}Your features:${R}"; "$TESS_BIN/wt" ls ;;
-  rm)       _validname "${1:-}" "feature name" || exit 2; "$TESS_BIN/wt" rm "$@" ;;
-  clean)    "$TESS_BIN/wt" prune ;;
+    [ -n "$_feat" ] && { _validname "$_feat" "feature name" || exit 2; }
+    "$TESS_LIB/worktrees/wt" "$@" ;;
+  repos)    exec bash "$TESS_LIB/worktrees/repos.sh" "$@" ;;
+  ls|list)  echo "${B}Your features:${R}"; "$TESS_LIB/worktrees/wt" ls ;;
+  rm)       _validname "${1:-}" "feature name" || exit 2; "$TESS_LIB/worktrees/wt" rm "$@" ;;
+  clean)    "$TESS_LIB/worktrees/wt" prune ;;
 
   path)     # print a worktree path (for agents: cd "$(tess path <feature> [repo])")
     feat="${1:-}"; repo="${2:-}"
     [ -z "$feat" ] && { echo "usage: tess path <feature> [repo]" >&2; exit 1; }
     _validname "$feat" "feature name" || exit 2
     p="$TESS_WORKTREE_ROOT/$feat"; [ -n "$repo" ] && p="$p/$repo"
+    if [ -z "$repo" ] && [ -d "$p" ] && [ ! -e "$p/.git" ]; then
+      # single-repo feature: hand back the repo dir itself, so whoever cd's
+      # here lands INSIDE a git repo (multi-repo features return the root)
+      _subs=()
+      for _sub in "$p"/*/; do [ -e "${_sub%/}/.git" ] && _subs+=("${_sub%/}"); done
+      [ "${#_subs[@]}" -eq 1 ] && p="${_subs[0]}"
+    fi
     [ -e "$p" ] && echo "$p" || { echo "not found: $p" >&2; exit 1; }
     ;;
 
-  wt|worktrees)  # full worktree status across repos (so agents never call raw git worktree)
-    for repo in $TESS_REPOS_ALL; do
-      d="$TESS_CORE/$repo"; [ -d "$d" ] || continue
-      echo "${B}$repo${R}"; git -C "$d" worktree list 2>/dev/null | sed 's/^/  /'
+  wt|worktrees)  # worktree status: every feature, its repos, branch + dirty + source
+    _found=0
+    for _f in "$TESS_WORKTREE_ROOT"/*/; do
+      [ -d "$_f" ] || continue
+      _feat="$(basename "$_f")"
+      [ "$_feat" = "$(basename "$TESS_CORE")" ] && continue
+      _subs=()
+      [ -e "${_f%/}/.git" ] && _subs+=("${_f%/}")
+      for _sub in "$_f"*/; do [ -e "${_sub%/}/.git" ] && _subs+=("${_sub%/}"); done
+      [ "${#_subs[@]}" -eq 0 ] && continue
+      _found=1
+      echo "${B}$_feat${R}"
+      for _d in "${_subs[@]}"; do
+        _br="$(git -C "$_d" rev-parse --abbrev-ref HEAD 2>/dev/null || echo '?')"
+        _dirty="$(git -C "$_d" status --porcelain 2>/dev/null | grep -c . || true)"
+        _gd="$(sed -n 's/^gitdir: //p' "$_d/.git" 2>/dev/null || true)"
+        _srcr=""; case "$_gd" in */.git/worktrees/*) _srcr="${_gd%/.git/worktrees/*}" ;; esac
+        _state="clean"; [ "${_dirty:-0}" -gt 0 ] && _state="${Y}${_dirty} dirty${R}"
+        printf '  %-22s %-22s %-10s %s\n' "$(basename "$_d")" "$_br" "$_state" "${_srcr:+${D}← ${_srcr/#$HOME/~}${R}}"
+      done
     done
+    [ "$_found" = 0 ] && echo "no feature worktrees yet. (create one: tess new <feature>)"
     ;;
 
   env)
     feat="${1:-}"; [ -z "$feat" ] && { echo "usage: tess env <feature>"; exit 1; }
     _validname "$feat" "feature name" || exit 2
-    core="$TESS_CORE"
-    [ -d "$TESS_WORKTREE_ROOT/$feat" ] || { echo "no feature '$feat' (see: tess ls)"; exit 1; }
+    fdir="$TESS_WORKTREE_ROOT/$feat"
+    [ -d "$fdir" ] || { echo "no feature '$feat' (see: tess ls)"; exit 1; }
     echo "${B}refreshing env for '$feat'${R}"
-    for repo in $TESS_REPOS_ALL; do
-      src="$core/$repo"; dst="$TESS_WORKTREE_ROOT/$feat/$repo"
-      [ -d "$dst" ] || continue
-      echo "  ${Y}$repo${R}"
+    # iterate the worktrees actually IN the feature and follow each one's own
+    # gitdir pointer back to its source repo — works for ANY repo, not just the
+    # configured fleet.
+    _dsts=()
+    [ -f "$fdir/.git" ] && _dsts+=("$fdir")
+    for _sub in "$fdir"/*/; do [ -f "${_sub%/}/.git" ] && _dsts+=("${_sub%/}"); done
+    [ "${#_dsts[@]}" -eq 0 ] && { echo "  (no worktrees inside '$feat')"; exit 0; }
+    for dst in "${_dsts[@]}"; do
+      gd="$(sed -n 's/^gitdir: //p' "$dst/.git" 2>/dev/null || true)"
+      case "$gd" in */.git/worktrees/*) src="${gd%/.git/worktrees/*}" ;; *) src="$TESS_CORE/$(basename "$dst")" ;; esac
+      [ -d "$src" ] || { echo "  ${Y}$(basename "$dst")${R} — source repo not found ($src), skipped"; continue; }
+      echo "  ${Y}$(basename "$dst")${R} ${D}← ${src/#$HOME/~}${R}"
       find "$src" \( -name node_modules -o -name .git -o -name .next -o -name dist -o -name build \) -prune -o \
         -type f \( -name '.env' -o -name '.env.*' \) ! -name '*.example' ! -name '*.sample' -print0 |
       while IFS= read -r -d '' f; do
@@ -378,40 +425,40 @@ case "$cmd" in
   claude|kimi)
     # tess claude|kimi                      interactive, current tab (unchanged)
     # tess claude|kimi <feat|.> ["prompt"] [--file f] [--model m] [--effort e]
-    #   feat -> create the worktree if missing, spawn in a new cmux pane there.
+    #   feat -> create the worktree if missing, spawn in a new pane there.
     #   The spawner GUARANTEES model/effort/prompt actually apply (launch flags
-    #   don't always stick through the PTY) — see _tess-spawn.py.
+    #   don't always stick through the PTY) — see libexec/fleet/spawn.py.
     [ $# -eq 0 ] && { _hcom "$cmd" --run-here; exit $?; }
-    exec python3 "$TESS_BIN/_tess-spawn.py" "$cmd" "$@"
+    exec python3 "$TESS_LIB/fleet/spawn.py" "$cmd" "$@"
     ;;
   agents)   # bare = live fleet dashboard; --json = machine-readable fleet state
-    case "${1:-}" in --json) exec python3 "$TESS_BIN/_tess-hq.py" status --json ;; esac
+    case "${1:-}" in --json) exec python3 "$TESS_LIB/fleet/hq.py" status --json ;; esac
     _hcom; exit $? ;;
-  status)   exec python3 "$TESS_BIN/_tess-hq.py" status "$@" ;;
-  diff)     exec python3 "$TESS_BIN/_tess-hq.py" diff "$@" ;;
-  approve)  exec python3 "$TESS_BIN/_tess-hq.py" approve "$@" ;;
-  inject)   chmod +x "$TESS_BIN/_tess-inject.py" 2>/dev/null; exec python3 "$TESS_BIN/_tess-inject.py" "$@" ;;
-  done)     _validname "${1:-}" "feature name" || exit 2; exec python3 "$TESS_BIN/_tess-done.py" "$@" ;;
+  status)   exec python3 "$TESS_LIB/fleet/hq.py" status "$@" ;;
+  diff)     exec python3 "$TESS_LIB/fleet/hq.py" diff "$@" ;;
+  approve)  exec python3 "$TESS_LIB/fleet/hq.py" approve "$@" ;;
+  inject)   exec python3 "$TESS_LIB/fleet/inject.py" "$@" ;;
+  done)     _validname "${1:-}" "feature name" || exit 2; exec python3 "$TESS_LIB/fleet/done.py" "$@" ;;
   hcom)     _hcom "$@"; exit $? ;;   # raw backend passthrough (power users/agents): tess hcom <anything>
-  report)   exec python3 "$TESS_BIN/_tess-hq.py" report "$@" ;;
-  digest)   exec python3 "$TESS_BIN/_tess-hq.py" digest "$@" ;;
-  tell)     exec python3 "$TESS_BIN/_tess-comms.py" tell "$@" ;;
-  inbox)    exec python3 "$TESS_BIN/_tess-comms.py" inbox "$@" ;;
-  team)     exec python3 "$TESS_BIN/_tess-team.py" "$@" ;;
-  orchestrate|orch) exec python3 "$TESS_BIN/_tess-orchestrate.py" "$@" ;;
-  ship)     _validname "${1:-}" "feature name" || exit 2; exec python3 "$TESS_BIN/_tess-ship.py" ship "$@" ;;
-  spend)    exec python3 "$TESS_BIN/_tess-ship.py" spend "$@" ;;
-  wait)     exec python3 "$TESS_BIN/_tess-watch.py" wait "$@" ;;
-  watch)    exec python3 "$TESS_BIN/_tess-watch.py" watch "$@" ;;
+  report)   exec python3 "$TESS_LIB/fleet/hq.py" report "$@" ;;
+  digest)   exec python3 "$TESS_LIB/fleet/hq.py" digest "$@" ;;
+  tell)     exec python3 "$TESS_LIB/fleet/comms.py" tell "$@" ;;
+  inbox)    exec python3 "$TESS_LIB/fleet/comms.py" inbox "$@" ;;
+  team)     exec python3 "$TESS_LIB/fleet/team.py" "$@" ;;
+  orchestrate|orch) exec python3 "$TESS_LIB/fleet/orchestrate.py" "$@" ;;
+  ship)     _validname "${1:-}" "feature name" || exit 2; exec python3 "$TESS_LIB/fleet/ship.py" ship "$@" ;;
+  spend)    exec python3 "$TESS_LIB/fleet/ship.py" spend "$@" ;;
+  wait)     exec python3 "$TESS_LIB/fleet/watch.py" wait "$@" ;;
+  watch)    exec python3 "$TESS_LIB/fleet/watch.py" watch "$@" ;;
   kill)
     tgt="${1:-}"; [ -z "$tgt" ] && { echo "usage: tess kill <agent|feature|tag:X|all>"; exit 1; }
     if [ -d "$TESS_WORKTREE_ROOT/$tgt" ]; then
-      shift; exec python3 "$TESS_BIN/_tess-done.py" "$tgt" --agents-only "$@"   # feature: its agents only
+      shift; exec python3 "$TESS_LIB/fleet/done.py" "$tgt" --agents-only "$@"   # feature: its agents only
     fi
     _hcom kill "$@"; exit $?
     ;;
-  loop)     exec bash "$TESS_BIN/_tess-loop.sh" "$@" ;;
-  resume|r) exec python3 "$TESS_BIN/_tess-resume.py" ;;
+  loop)     exec bash "$TESS_LIB/fleet/loop.sh" "$@" ;;
+  resume|r) exec python3 "$TESS_LIB/fleet/resume.py" ;;
   local|offline)   # offline AI (no internet). `tess local [small|big] [prompt]`
     case "${1:-}" in
       small|med|medium|big) t="$1"; shift; _localrun "$t" "$@" ;;
@@ -423,21 +470,22 @@ case "$cmd" in
   think|partner)
     # thinking-partner mode: company context, sounding board (not idea-firehose),
     # researches in the background while it keeps talking to you.
-    exec claude --add-dir "$TESS_VAULT" \
-      --append-system-prompt "$(cat "$HOME/.claude/modes/think.md")" "$@"
+    m="$(_mode think)" || exit 1
+    exec claude --add-dir "$TESS_VAULT" --append-system-prompt "$(cat "$m")" "$@"
     ;;
   post|write|brand)
     # daily content partner: your voice + proven mechanics, learns your taste each session.
-    exec claude --add-dir "$TESS_VAULT" \
-      --append-system-prompt "$(cat "$HOME/.claude/modes/post.md")" "$@"
+    m="$(_mode post)" || exit 1
+    exec claude --add-dir "$TESS_VAULT" --append-system-prompt "$(cat "$m")" "$@"
     ;;
   boss)
     # interactive multi-project orchestrator: you talk to it, it routes/spawns/coordinates
     # the fleet across ALL projects. Boots oriented; if no ask is passed, it runs its
     # on-start orientation first so it knows the lay of the land before your first turn.
+    m="$(_mode boss)" || exit 1
     boss_boot="Boot: run your on-start orientation now (tess wt, tess ls, tess status, uvx hcom list, tess brief) to get oriented, then give me a tight board of the current lay of the land and wait for my first ask."
     exec claude --add-dir "$TESS_VAULT" \
-      --append-system-prompt "$(cat "$HOME/.claude/modes/boss.md")" "${@:-$boss_boot}"
+      --append-system-prompt "$(cat "$m")" "${@:-$boss_boot}"
     ;;
 
   # tools -------------------------------------------------------------------
@@ -461,7 +509,7 @@ case "$cmd" in
       elif [ "$max" -lt 100000 ]; then echo "${Y}⚠ low ceiling — run: tess fix-files${R}";
       else echo "${G}ok${R}"; fi
     fi
-    printf "  features:    "; "$TESS_BIN/wt" ls 2>/dev/null | grep -c .
+    printf "  features:    "; "$TESS_LIB/worktrees/wt" ls 2>/dev/null | grep -c .
     printf "  local model: "
     if command -v ollama >/dev/null 2>&1; then ollama list 2>/dev/null | awk 'NR==2{print $1" ("$3$4")"}' | grep . || echo "none pulled"; else echo "ollama not installed"; fi
     echo "  ${D}(disk size: run 'tess disk' — it's slow on big node_modules)${R}"
@@ -475,7 +523,7 @@ case "$cmd" in
     ;;
 
   cheat)    # the closest thing to a cheatsheet is the bundled README
-    readme="$TESS_BIN/../README.md"
+    readme="$TESS_HOME/README.md"
     if [ -f "$readme" ]; then _show "$readme"
     else echo "run ${C}tess${R} for the full menu, or ${C}tess help <command>${R} for one command."; fi ;;
 
@@ -505,30 +553,30 @@ PL
   company)  if [ $# -gt 0 ]; then _newnote "Companies" "company" "$@"; else _show "$HUB/hub.md"; fi ;;
   add)      _add "$@" ;;
   log)      _log "$@" ;;
-  people)   python3 "$TESS_BIN/_tess-list.py" people ;;
-  companies|company-list) python3 "$TESS_BIN/_tess-list.py" companies ;;
-  reminders|followups) python3 "$TESS_BIN/_tess-list.py" reminders ;;
+  people)   python3 "$TESS_LIB/brain/list.py" people ;;
+  companies|company-list) python3 "$TESS_LIB/brain/list.py" companies ;;
+  reminders|followups) python3 "$TESS_LIB/brain/list.py" reminders ;;
 
   # --- life (macOS: calendar / messages / calls) ---
-  calendar|cal) exec "$TESS_BIN/_tess-cal" "$@" ;;
-  messages|msg) python3 "$TESS_BIN/_tess-msg.py" "$@" ;;
-  chat|thread)  python3 "$TESS_BIN/_tess-chat.py" "$@" ;;
-  send|text)    exec bash "$TESS_BIN/_tess-send.sh" "$@" ;;
-  calls)        python3 "$TESS_BIN/_tess-calls.py" ;;
-  mail|email)   python3 "$TESS_BIN/_tess-mail.py" "$@" ;;
-  music)        exec python3 "$TESS_BIN/_tess-music.py" "$@" ;;
-  read|book)    exec python3 "$TESS_BIN/_tess-read.py" "$@" ;;
-  readpos)      python3 "$TESS_BIN/_tess-readpos.py" "$@" ;;
+  calendar|cal) exec python3 "$TESS_LIB/life/cal.py" "$@" ;;
+  messages|msg) python3 "$TESS_LIB/life/messages.py" "$@" ;;
+  chat|thread)  python3 "$TESS_LIB/life/chat.py" "$@" ;;
+  send|text)    exec bash "$TESS_LIB/life/send.sh" "$@" ;;
+  calls)        python3 "$TESS_LIB/life/calls.py" ;;
+  mail|email)   python3 "$TESS_LIB/life/mail.py" "$@" ;;
+  music)        exec python3 "$TESS_LIB/life/music.py" "$@" ;;
+  read|book)    exec python3 "$TESS_LIB/life/read.py" "$@" ;;
+  readpos)      python3 "$TESS_LIB/life/readpos.py" "$@" ;;
 
-  ask)      exec python3 "$TESS_BIN/_tess-ask.py" "$@" ;;
+  ask)      exec python3 "$TESS_LIB/brain/ask.py" "$@" ;;
   voice)
     echo "🎙  type or dictate (Wispr Flow) — Ctrl+C to stop."
     while printf "\n🎙  tess> " && read -r line; do
       [ -z "$line" ] && continue
-      python3 "$TESS_BIN/_tess-ask.py" $line
+      python3 "$TESS_LIB/brain/ask.py" $line
     done
     ;;
-  listen)   exec bash "$TESS_BIN/_tess-listen.sh" ;;   # hands-free wake word
+  listen)   exec bash "$TESS_LIB/brain/listen.sh" ;;   # hands-free wake word
 
   *)
     # user's custom commands live in ~/.config/tess/commands/ (never in the repo,
@@ -544,7 +592,7 @@ PL
     fi
     # a sentence/question -> voice router; a short name -> note lookup
     if [ $# -ge 3 ] || printf '%s %s' "$cmd" "$*" | grep -q '?'; then
-      exec python3 "$TESS_BIN/_tess-ask.py" "$cmd" "$@"
+      exec python3 "$TESS_LIB/brain/ask.py" "$cmd" "$@"
     else
       _lookup "$cmd" "$@"
     fi

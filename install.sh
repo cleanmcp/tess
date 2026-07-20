@@ -14,19 +14,23 @@ ask() { [ "$MINIMAL" = "--minimal" ] && return 1; printf "\033[1m%s\033[0m [y/N]
 
 say "› installing tess into $BIN"
 mkdir -p "$BIN"
-for f in "$HERE"/bin/*; do chmod +x "$f"; ln -sf "$f" "$BIN/$(basename "$f")"; done
-
-say "› installing agent modes into ~/.claude/modes"
-mkdir -p "$HOME/.claude/modes"
-cp "$HERE"/modes/*.md "$HOME/.claude/modes/"
+chmod +x "$HERE/bin/tess" "$HERE"/libexec/*/*
+ln -sf "$HERE/bin/tess" "$BIN/tess"
+# only `tess` goes on PATH — helpers live in <repo>/libexec. Clean up helper
+# symlinks left behind by the old flat-bin layout.
+for l in "$BIN"/_tess-* "$BIN"/_tess_* "$BIN"/wt "$BIN"/worktree.sh; do
+  [ -L "$l" ] || continue
+  case "$(readlink "$l")" in "$HERE"/*) rm -f "$l"; echo "  removed stale link: ${l/#$HOME/~}" ;; esac
+done
 
 say "› scaffolding config in ~/.config/tess"
 mkdir -p "$HOME/.config/tess"
 [ -f "$HOME/.config/tess/config" ] || { cp "$HERE/config.example" "$HOME/.config/tess/config"; echo "  created ~/.config/tess/config — edit it to set your vault + repos"; }
 [ -f "$HOME/.config/tess/models" ] || printf 'small=llama3.2:1b\nmed=llama3.2:3b\nbig=qwen2.5:7b\n' > "$HOME/.config/tess/models"
-mkdir -p "$HOME/.config/tess/commands" "$HOME/.config/tess/templates" "$HOME/.config/tess/state"
+mkdir -p "$HOME/.config/tess/commands" "$HOME/.config/tess/templates" "$HOME/.config/tess/state" "$HOME/.config/tess/modes"
 [ -f "$HOME/.config/tess/commands/README" ] || echo "Put executable scripts here named '<name>'. Run them as 'tess <name>'. They survive 'git pull' — the repo never touches this folder." > "$HOME/.config/tess/commands/README"
 [ -f "$HOME/.config/tess/templates/README" ] || echo "Role templates for 'tess team' (yourname.md -> template: yourname). These override the built-ins in <repo>/templates/." > "$HOME/.config/tess/templates/README"
+[ -f "$HOME/.config/tess/modes/README" ] || echo "Agent-mode overrides for tess think/post/boss/read/orchestrate: a think.md / post.md / boss.md / read.md / orchestrate.md here overrides the repo's modes/. The repo copies stay current with 'tess update'; yours win." > "$HOME/.config/tess/modes/README"
 
 say "› teaching your AI agents about tess"
 _inject_primer() {   # append the primer to an agent instructions file (idempotent)

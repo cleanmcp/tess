@@ -1,0 +1,48 @@
+#!/usr/bin/env python3
+"""tess calendar [days] — upcoming events from the local Calendar DB (uses Full Disk Access)."""
+import os, sys, sqlite3, time, datetime
+
+CAL = os.path.expanduser("~/Library/Group Containers/group.com.apple.calendar/Calendar.sqlitedb")
+days = int(sys.argv[1]) if len(sys.argv) > 1 and sys.argv[1].isdigit() else 7
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "lib"))
+from tess_common import C  # noqa: E402
+
+try:
+    con = sqlite3.connect(f"file:{CAL}?mode=ro", uri=True)
+except Exception:
+    print("can't read Calendar — grant Full Disk Access to your terminal app (Privacy & Security → Full Disk Access), then restart it.")
+    sys.exit(1)
+
+EPOCH = 978307200
+now = time.time() - EPOCH
+end = now + days * 86400
+try:
+    # OccurrenceCache includes recurring-event instances (CalendarItem.start_date misses them)
+    rows = con.execute("""
+        SELECT ci.summary, o.occurrence_date, ci.all_day, c.title
+        FROM OccurrenceCache o
+        JOIN CalendarItem ci ON o.event_id = ci.ROWID
+        LEFT JOIN Calendar c ON o.calendar_id = c.ROWID
+        WHERE o.occurrence_date BETWEEN ? AND ?
+        ORDER BY o.occurrence_date
+    """, (now, end)).fetchall()
+except sqlite3.OperationalError:
+    print("Calendar DB unreadable — grant your terminal app Full Disk Access, then restart it.")
+    sys.exit(1)
+
+print(f"\n  {C.bold}{C.mag}📅 next {days} days{C.r}\n")
+if not rows:
+    print(f"  {C.grey}nothing scheduled.{C.r}\n")
+    sys.exit(0)
+
+last_day = None
+for summary, start, all_day, cal in rows:
+    dt = datetime.datetime.fromtimestamp(start + EPOCH)
+    day = dt.strftime("%a %b %d")
+    if day != last_day:
+        print(f"  {C.bold}{day}{C.r}")
+        last_day = day
+    tm = "all day" if all_day else dt.strftime("%H:%M")
+    caltag = f" {C.grey}[{cal}]{C.r}" if cal else ""
+    print(f"    {C.yellow}{tm:>7}{C.r}  {summary or '(no title)'}{caltag}")
+print()

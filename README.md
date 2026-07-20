@@ -89,13 +89,16 @@ Sessions ride on git worktrees. You can also drive them directly for multi-repo 
 
 ```
 tess new <feature>           worktree(s) for the repo you're standing in — or, outside a repo, your configured set
-tess new --all <feature>     include optional repos
 tess new <repo> <feature>    any repo on disk by name — tess maps them all (tess repos) and, when
                              several copies share a name, picks the one you actually work in
-                             (zoxide frecency + git activity). No macOS permission prompts: without
-                             Full Disk Access it skips Desktop/Documents/Downloads instead of asking.
+                             (zoxide frecency + git activity). An unknown repo is an ERROR — the
+                             grammar is deterministic, nothing is silently reinterpreted.
+tess new … --fleet | --all   force your configured set (+ optional repos)
+tess new … --base <branch>   cut from a branch other than main
 tess ls | rm | env | clean | branches | wt | path
 ```
+
+Single-repo features are agent-friendly: no folder shell — `tess path <feature>` (and any agent tess spawns there) lands *inside* the repo. Multi-repo features get an orientation `AGENTS.md` at the root, since the root itself is not a repo.
 
 ## Coding todos — one checklist across every session
 
@@ -173,6 +176,7 @@ TESS_REPOS_ALL="app api web"                # + optional repos (tess new --all)
 ~/.config/tess/
 ├── config          # your repos, paths, fleet knobs (TESS_* vars)
 ├── models          # local model tiers (small= / med= / big=)
+├── modes/          # your overrides of the agent modes (think/post/boss/read/orchestrate)
 ├── templates/      # your own role templates for `tess team`
 └── commands/       # your own commands: an executable `foo` here → run as `tess foo`
 ```
