@@ -45,7 +45,10 @@ case "$c" in
     "--tag T groups names (default: feat) · --no-auto-trust · --dry-run shows the plan." \
     "${D}e.g. tess kimi redis-cache \"profile the cache layer\" --model kimi-k2 --effort high${R}" \
     "${D}     tess claude . \"fix the failing test\" --model fable5${R}" ;;
-  resume|r)  h "tess resume" "Pick from ALL past Claude/Kimi sessions (any folder) by AI summary; resumes it in its folder." ;;
+  resume|r)  h "tess resume [--plain] [--refresh]" \
+    "Pick from ALL past Claude/Kimi sessions (any folder) and resume in the session's own folder (recreated if deleted — sessions are keyed to it)." \
+    "Each row gets a one-line AI summary of what the session worked on (local model, cached — instant after first run)." \
+    "--plain = raw titles, no AI · --refresh = regenerate summaries · ✗dir marks sessions whose folder is gone." ;;
   think|partner) h "tess think" "Thinking-partner mode: loads your company context, sounding-board (not idea-firehose), researches in the background." ;;
   post|brand|write) h "tess post" "Daily content partner for your personal brand. Learns your taste each session." ;;
   local|offline|small|big|med|medium) h "tess local | small | big [prompt]" \

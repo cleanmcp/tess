@@ -456,7 +456,7 @@ case "$cmd" in
     _hcom kill "$@"; exit $?
     ;;
   loop)     exec bash "$TESS_LIB/fleet/loop.sh" "$@" ;;
-  resume|r) exec python3 "$TESS_LIB/fleet/resume.py" ;;
+  resume|r) exec python3 "$TESS_LIB/fleet/resume.py" "$@" ;;
   local|offline)   # offline AI (no internet). `tess local [small|big] [prompt]`
     case "${1:-}" in
       small|med|medium|big) t="$1"; shift; _localrun "$t" "$@" ;;

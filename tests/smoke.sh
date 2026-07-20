@@ -72,6 +72,7 @@ before="$(ls "$TMP/wtroot" | wc -l)"
 t "tess claude --help is safe"  "$TESS" claude --help
 t "...created nothing"          test "$(ls "$TMP/wtroot" | wc -l)" = "$before"
 t "spawn --dry-run exits 0"     "$TESS" claude feat1 "smoke" --dry-run
+t "resume --plain lists non-tty" "$TESS" resume --plain
 
 echo "== todos (TESS_STATE override) =="
 "$TESS" todo add -p smoke "temp item" >/dev/null 2>&1
