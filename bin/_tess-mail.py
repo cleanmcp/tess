@@ -3,6 +3,9 @@
 Read:    [query] · from <name|addr> · read <id> · search <text>
 Actions: send <who> -- <subj> <body> · reply <id> -- <text> · mark <id> read|unread ·
          flag <id> [color|off] · archive <id> · move <id> <mailbox> · delete <id>
+Bulk:    bulk-archive|bulk-delete from <who> | search <text>
+Cleanup: clean [--archive <cats>] [--delete <cats>] [--all]
+Boxes:   boxes create <name> [--account <acct>]
 Flags: --limit N · --json · --from <addr>. Reads hit the sqlite store directly (never
 written); actions go through Mail.app via AppleScript. send/reply/delete always
 confirm with a human — non-interactive calls get the exact command to run instead."""
@@ -443,6 +446,173 @@ ACT_SCRIPT = '''on run argv
   end tell
 end run'''
 
+BULK_ACT_SCRIPT = '''on splitByNewline(s)
+  set delim to AppleScript's text item delimiters
+  set AppleScript's text item delimiters to "\n"
+  set out to text items of s
+  set AppleScript's text item delimiters to delim
+  return out
+end splitByNewline
+
+on run argv
+  set acctAddr to item 1 of argv
+  set act to item 2 of argv
+  set midListStr to item 3 of argv
+  tell application "Mail"
+    set theAcct to missing value
+    repeat with a in accounts
+      if (get email addresses of a) contains acctAddr then
+        set theAcct to a
+        exit repeat
+      end if
+    end repeat
+    if theAcct is missing value then return "ERR:no account in Mail.app for " & acctAddr
+
+    set targetMb to missing value
+    if act is "archive" then
+      repeat with mb in mailboxes of theAcct
+        if (name of mb) is "Archive" or (name of mb) is "All Mail" then
+          set targetMb to mb
+          exit repeat
+        end if
+      end repeat
+    end if
+
+    set delim to AppleScript's text item delimiters
+    set AppleScript's text item delimiters to "\n"
+    set targetMids to text items of midListStr
+    set AppleScript's text item delimiters to delim
+
+    -- For archive/delete we only selected messages from the inbox, so only search
+    -- inbox variants. Scanning All Mail/Gmail every time is slow and unnecessary.
+    if act is "archive" or act is "delete" then
+      set srcNames to {"INBOX", "Inbox"}
+    else
+      set srcNames to {"INBOX", "Inbox", "All Mail", "[Gmail]/All Mail"}
+    end if
+    set srcBoxes to {}
+    repeat with mb in mailboxes of theAcct
+      if srcNames contains (name of mb) then
+        set end of srcBoxes to mb
+      end if
+    end repeat
+
+    set results to {}
+    repeat with mid in targetMids
+      if (mid as string) is "" then
+        set end of results to "ERR:empty"
+      else
+        try
+          set theMsg to missing value
+          repeat with srcMb in srcBoxes
+            try
+              set hits to (messages of srcMb whose message id is (mid as string))
+              if (count of hits) > 0 then
+                set theMsg to item 1 of hits
+                exit repeat
+              end if
+            end try
+          end repeat
+          if theMsg is missing value then
+            set end of results to "ERR:notfound:" & mid
+          else
+            if act is "archive" then
+              move theMsg to targetMb
+              set end of results to "OK:archive:" & mid
+            else if act is "delete" then
+              delete theMsg
+              set end of results to "OK:delete:" & mid
+            else
+              set end of results to "ERR:unknown:" & act
+            end if
+          end if
+        on error errMsg
+          set end of results to "ERR:" & errMsg
+        end try
+      end if
+    end repeat
+
+    set outStr to ""
+    repeat with r in results
+      set outStr to outStr & (r as string) & "\n"
+    end repeat
+    return outStr
+  end tell
+end run'''
+
+BULK_FROM_SCRIPT = '''on run argv
+  set acctAddr to item 1 of argv
+  set act to item 2 of argv
+  set patternsStr to item 3 of argv
+  tell application "Mail"
+    set theAcct to missing value
+    repeat with a in accounts
+      if (get email addresses of a) contains acctAddr then
+        set theAcct to a
+        exit repeat
+      end if
+    end repeat
+    if theAcct is missing value then return "ERR:no account in Mail.app for " & acctAddr
+
+    set targetMb to missing value
+    if act is "archive" then
+      repeat with mb in mailboxes of theAcct
+        if (name of mb) is "Archive" or (name of mb) is "All Mail" then
+          set targetMb to mb
+          exit repeat
+        end if
+      end repeat
+    else if act is "move" then
+      set moveTarget to item 4 of argv
+      repeat with mb in mailboxes of theAcct
+        if (name of mb) is (moveTarget as string) then
+          set targetMb to mb
+          exit repeat
+        end if
+      end repeat
+    end if
+
+    set delim to AppleScript's text item delimiters
+    set AppleScript's text item delimiters to "\n"
+    set patterns to text items of patternsStr
+    set AppleScript's text item delimiters to delim
+
+    set moved to 0
+    -- For archive/delete we only care about inbox copies; scanning All Mail/Archive
+    -- re-processes already-archived messages and inflates counts.
+    if act is "archive" or act is "delete" then
+      set srcNames to {"INBOX", "Inbox"}
+    else
+      set srcNames to {"INBOX", "Inbox", "All Mail", "[Gmail]/All Mail", "Archive"}
+    end if
+    repeat with srcName in srcNames
+      try
+        set srcMb to mailbox srcName of theAcct
+        repeat with pat in patterns
+          if (pat as string) is "" then
+            -- skip
+          else
+            try
+              set hits to (messages of srcMb whose (sender contains (pat as string)))
+              repeat with msg in hits
+                try
+                  if act is "archive" or act is "move" then
+                    move msg to targetMb
+                  else if act is "delete" then
+                    delete msg
+                  end if
+                  set moved to moved + 1
+                end try
+              end repeat
+            end try
+          end if
+        end repeat
+      end try
+    end repeat
+    return "OK:" & moved
+  end tell
+end run'''
+
 SEND_SCRIPT = '''on run argv
   tell application "Mail"
     set outMsg to make new outgoing message with properties ¬
@@ -488,14 +658,36 @@ BOXES_SCRIPT = '''on run argv
   return out
 end run'''
 
+BOXES_CREATE_SCRIPT = '''on run argv
+  set acctAddr to item 1 of argv
+  set boxName to item 2 of argv
+  tell application "Mail"
+    set theAcct to missing value
+    repeat with a in accounts
+      set eaddrs to (get email addresses of a)
+      if eaddrs contains acctAddr then
+        set theAcct to a
+        exit repeat
+      end if
+    end repeat
+    if theAcct is missing value then return "ERR:no account in Mail.app for " & acctAddr
+    try
+      set newMb to make new mailbox at theAcct with properties {name:boxName}
+      return "OK:created " & (name of newMb)
+    on error errMsg
+      return "ERR:" & errMsg
+    end try
+  end tell
+end run'''
 
-def osa(script, *args):
+
+def osa(script, *args, timeout=90):
     """Run an AppleScript with argv (injection-safe). -> stdout, or exits with guidance."""
     try:
         p = subprocess.run(["osascript", "-e", script, *args],
-                           capture_output=True, text=True, timeout=90)
+                           capture_output=True, text=True, timeout=timeout)
     except subprocess.TimeoutExpired:
-        print("Mail.app didn't respond in 90s — open it once, then retry."); sys.exit(1)
+        print(f"Mail.app didn't respond in {timeout}s — open it once, then retry."); sys.exit(1)
     err = (p.stderr or "").strip()
     if p.returncode != 0 or err:
         if "-1743" in err or "Not authorized" in err:
@@ -690,6 +882,294 @@ def cmd_boxes():
     print()
 
 
+def cmd_boxes_create(name, account):
+    sender = pick_sender(account)
+    if not sender:
+        print("no account found in Mail.app to create mailbox under."); sys.exit(1)
+    res = osa(BOXES_CREATE_SCRIPT, sender, name)
+    ok = res.startswith("OK:")
+    if AS_JSON:
+        print(json.dumps({"ok": ok, "account": sender, "mailbox": name,
+                          "detail": res[3:] if ok else res[4:]}))
+        if not ok:
+            sys.exit(1)
+        return
+    if ok:
+        print(f"✓ {res[3:]} under {sender}")
+    else:
+        print(f"✗ {res[4:]}")
+        sys.exit(1)
+
+
+# ---------------- bulk actions ----------------
+def matching_rows(source, query, need=10000):
+    """Return rows matching a sender (from) or header/snippet (search)."""
+    ql = query.lower()
+    if source == "from":
+        known = {a for a, n in contacts_map().items() if "@" in a and ql in n.lower()}
+        def filt(row):
+            return (ql in row["from_name"].lower() or ql in row["from_addr"].lower()
+                    or row["from_addr"].lower() in known)
+    else:
+        def filt(row):
+            hay = " ".join([row["from_name"], row["from_addr"], row["subject"], row["snippet"]]).lower()
+            return ql in hay
+    return fetch(filt, include_hidden=True, need=need)
+
+
+def bulk_action_by_mid(rows, action):
+    """Archive or delete a list of rows (already collected), batched by account, chunk, and message ID."""
+    by_acct = {}
+    for row in rows:
+        try:
+            mid = message_id_of(row["id"])
+        except SystemExit:
+            continue
+        by_acct.setdefault(row["account"], []).append((row["id"], mid))
+
+    ok, fail, notfound = 0, 0, 0
+    CHUNK = 30
+    for acct, items in by_acct.items():
+        for i in range(0, len(items), CHUNK):
+            chunk = items[i:i + CHUNK]
+            mid_str = "\n".join(mid for _, mid in chunk)
+            res = osa(BULK_ACT_SCRIPT, acct, action, mid_str, timeout=600)
+            for line in res.splitlines():
+                if line.startswith("OK:"):
+                    ok += 1
+                elif line.startswith("ERR:notfound:"):
+                    notfound += 1
+                else:
+                    fail += 1
+                    if AS_JSON:
+                        print(json.dumps({"ok": False, "action": action, "error": line[4:]}))
+                    elif not line.startswith("ERR:empty"):
+                        print(f"✗ {line[4:]}")
+        if not AS_JSON:
+            print(f"  {C.grey}{acct}: {len(items)} processed{C.r}")
+
+    total = ok + fail + notfound
+    if AS_JSON:
+        print(json.dumps({"ok": fail == 0, "action": action, "matched": len(rows),
+                          "processed": total, "succeeded": ok, "notfound": notfound, "failed": fail}))
+    else:
+        print(f"\n{action}: {ok} succeeded, {notfound} already moved/missing, {fail} failed  ({len(rows)} matched)")
+    if fail:
+        sys.exit(1)
+
+
+def bulk_action_from(rows, action, pattern, mailbox=""):
+    """Archive, delete, or move by sender pattern per account (fast Mail.app search)."""
+    by_acct = {}
+    for row in rows:
+        by_acct.setdefault(row["account"], 0)
+        by_acct[row["account"]] += 1
+
+    ok, fail = 0, 0
+    for acct in by_acct:
+        args = [acct, action, pattern]
+        if action == "move":
+            args.append(mailbox)
+        res = osa(BULK_FROM_SCRIPT, *args, timeout=600)
+        if res.startswith("OK:"):
+            n = int(res[3:]) if res[3:].isdigit() else 0
+            ok += n
+            if not AS_JSON:
+                print(f"  {C.grey}{acct}: {n} {action}d{C.r}")
+        else:
+            fail += 1
+            if AS_JSON:
+                print(json.dumps({"ok": False, "action": action, "account": acct, "error": res[4:]}))
+            else:
+                print(f"✗ {acct}: {res[4:]}")
+
+    if AS_JSON:
+        print(json.dumps({"ok": fail == 0, "action": action, "matched": len(rows),
+                          "succeeded": ok, "failed": fail}))
+    else:
+        print(f"\n{action}: {ok} messages {action}d  ({len(rows)} matched)")
+    if fail:
+        sys.exit(1)
+
+
+def cmd_bulk_archive(source, query):
+    rows = matching_rows(source, query)
+    if not rows:
+        print(f"no messages match '{query}'")
+        return
+    if not AS_JSON:
+        print(f"\n  {C.bold}{C.mag}bulk archive{C.r}: {len(rows)} match '{query}'\n")
+        for r in rows[:10]:
+            print(f"  [{r['id']}] {C.cyan}{short(r['from_name'], 20)}{C.r} {short(r['subject'], 50)}")
+        if len(rows) > 10:
+            print(f"  {C.grey}... and {len(rows) - 10} more{C.r}")
+        print()
+    if source == "from":
+        bulk_action_from(rows, "archive", query)
+    else:
+        bulk_action_by_mid(rows, "archive")
+
+
+def cmd_bulk_delete(source, query):
+    rows = matching_rows(source, query)
+    if not rows:
+        print(f"no messages match '{query}'")
+        return
+    if not AS_JSON:
+        print(f"\n  {C.red}bulk delete{C.r}: {len(rows)} match '{query}'\n")
+        for r in rows[:15]:
+            print(f"  [{r['id']}] {C.cyan}{short(r['from_name'], 20)}{C.r} {short(r['subject'], 50)}  {C.grey}({r['account']}){C.r}")
+        if len(rows) > 15:
+            print(f"  {C.grey}... and {len(rows) - 15} more{C.r}")
+        print()
+        confirm_or_die(f"delete {len(rows)} messages", f'tess mail bulk-delete {source} "{query}"')
+    if source == "from":
+        bulk_action_from(rows, "delete", query)
+    else:
+        bulk_action_by_mid(rows, "delete")
+
+
+def cmd_bulk_move(source, query, mailbox):
+    rows = matching_rows(source, query)
+    if not rows:
+        print(f"no messages match '{query}'")
+        return
+    if not AS_JSON:
+        print(f"\n  {C.bold}{C.mag}bulk move{C.r}: {len(rows)} match '{query}' → {mailbox}\n")
+        for r in rows[:10]:
+            print(f"  [{r['id']}] {C.cyan}{short(r['from_name'], 20)}{C.r} {short(r['subject'], 50)}")
+        if len(rows) > 10:
+            print(f"  {C.grey}... and {len(rows) - 10} more{C.r}")
+        print()
+    if source == "from":
+        bulk_action_from(rows, "move", query, mailbox)
+    else:
+        bulk_action_by_mid(rows, "move", mailbox)
+
+
+# ---------------- smart cleanup ----------------
+# Categories are checked in order; first match wins. Keep specific/junk rules early.
+CLEANUP_CATS = {
+    "bots": {
+        "subjects": ["blocked deployment from studilanjutid"],
+        "addrs": [], "names": [], "domains": [],
+    },
+    "promos": {
+        "names": ["myprotein", "amazon.com", "chipotle", "airtable", "openai", "canva",
+                  "grubhub", "discover", "amazon prime", "amazon music", "amazon business"],
+        "domains": ["n.myprotein.com", "amazon.com", "chipotlerewards.com",
+                    "mail.airtable.com", "openai.com"],
+        "subjects": ["% off", "deal", "sale", "coupon", "free shipping", "rewards",
+                     "discount", "offer", "savings", "prime day", "free drink"],
+        "addrs": [],
+    },
+    "social": {
+        "names": ["instagram", "facebook", "twitter", "linkedin", "tiktok"],
+        "domains": ["instagram.com", "facebookmail.com", "twitter.com", "linkedin.com"],
+        "subjects": ["recently added", "see what's been happening", "new login",
+                     "new message", "shared something new", "catch up", "verify your profile"],
+        "addrs": [],
+    },
+    "newsletters": {
+        "names": ["career brew", "ford from runway", "railway", "neon changelog",
+                  "google scholar", "substack"],
+        "domains": ["careerbrew.io", "runway.com", "railway.app", "neon.tech"],
+        "subjects": ["changelog", "newsletter", "weekly", "digest", "your daily dose",
+                     "new related research", "hottest"],
+        "addrs": [],
+    },
+    "admin": {
+        "names": ["noreply-dmarc", "google", "calendly"],
+        "domains": ["google.com", "calendly.com"],
+        "subjects": ["report domain", "security alert", "accepted:", "declined:",
+                     "updated invitation", "invitation:", "canceled", "reminder:"],
+        "addrs": [],
+    },
+    "devops": {
+        "names": ["vercel", "railway", "neon", "github", "google cloud"],
+        "domains": ["vercel.com", "railway.app", "neon.tech", "github.com"],
+        "subjects": ["failed deployment", "alert", "resolved", "usage summary",
+                     "new sign-in", "blocked deployment", "weekly usage"],
+        "addrs": [],
+    },
+}
+
+
+def categorize(row):
+    name = row["from_name"].lower()
+    addr = row["from_addr"].lower()
+    subj = row["subject"].lower()
+    domain = addr.split("@")[-1] if "@" in addr else ""
+    for cat, rules in CLEANUP_CATS.items():
+        if any(s in name for s in rules.get("names", [])):
+            return cat
+        if any(s in addr for s in rules.get("addrs", [])):
+            return cat
+        if any(s in domain for s in rules.get("domains", [])):
+            return cat
+        if any(s in subj for s in rules.get("subjects", [])):
+            return cat
+    return "unknown"
+
+
+def cmd_clean(archive_cats, delete_cats, all_mail=False):
+    need = 10000 if all_mail else 5000
+    rows = fetch(lambda r: all_mail or r["mailbox"] == "inbox",
+                 include_hidden=False, need=need)
+    groups = {cat: [] for cat in list(CLEANUP_CATS) + ["unknown"]}
+    for row in rows:
+        groups.setdefault(categorize(row), []).append(row)
+
+    chosen = set((archive_cats or []) + (delete_cats or []))
+    invalid = chosen - set(groups)
+    if invalid:
+        print(f"unknown categories: {', '.join(sorted(invalid))}")
+        print(f"valid: {', '.join(sorted(groups))}")
+        sys.exit(2)
+
+    if not archive_cats and not delete_cats:
+        if AS_JSON:
+            print(json.dumps({cat: len(rows) for cat, rows in groups.items()}, indent=2))
+            return
+        print(f"\n  {C.bold}{C.mag}tess mail clean{C.r} — dry-run summary  ({len(rows)} messages scanned)\n")
+        for cat in sorted(groups):
+            n = len(groups[cat])
+            if n == 0:
+                continue
+            label = f"{C.yellow}{cat}{C.r}" if cat in ("promos", "social", "newsletters", "bots") else (
+                f"{C.red}{cat}{C.r}" if cat == "admin" else f"{C.cyan}{cat}{C.r}")
+            print(f"  {label:16} {n:4} messages")
+        print(f"\n  {C.grey}run:{C.r}")
+        print(f"    tess mail clean --archive promos,social,newsletters,admin")
+        print(f"    tess mail clean --delete bots")
+        return
+
+    if archive_cats:
+        to_archive = []
+        for cat in archive_cats:
+            to_archive.extend(groups.get(cat, []))
+        if to_archive:
+            if not AS_JSON:
+                print(f"\n  {C.bold}{C.mag}archive{C.r} {len(to_archive)} messages in {', '.join(archive_cats)}\n")
+            bulk_action_by_mid(to_archive, "archive")
+
+    if delete_cats:
+        to_delete = []
+        for cat in delete_cats:
+            to_delete.extend(groups.get(cat, []))
+        if to_delete:
+            if not AS_JSON:
+                print(f"\n  {C.red}delete{C.r} {len(to_delete)} messages in {', '.join(delete_cats)}\n")
+                for r in to_delete[:15]:
+                    print(f"  [{r['id']}] {C.cyan}{short(r['from_name'], 20)}{C.r} {short(r['subject'], 50)}  {C.grey}({r['account']}){C.r}")
+                if len(to_delete) > 15:
+                    print(f"  {C.grey}... and {len(to_delete) - 15} more{C.r}")
+                print()
+                confirm_or_die(f"delete {len(to_delete)} messages",
+                               f'tess mail clean --delete {",".join(delete_cats)}')
+            bulk_action_by_mid(to_delete, "delete")
+
+
 # ---------------- args ----------------
 # flags live BEFORE `--`; everything after `--` is content (subject/body/reply text)
 argv = sys.argv[1:]
@@ -698,7 +1178,7 @@ if "--" in argv:
     cut = argv.index("--")
     argv, post = argv[:cut], argv[cut + 1:]
 
-LIMIT, AS_JSON, FROM_ADDR, rest = 25, False, "", []
+LIMIT, AS_JSON, FROM_ADDR, BOX_ACCOUNT, CLEAN_ARCHIVE, CLEAN_DELETE, CLEAN_ALL, rest = 25, False, "", "", "", "", False, []
 i = 0
 while i < len(argv):
     a = argv[i]
@@ -708,6 +1188,20 @@ while i < len(argv):
         FROM_ADDR = a.split("=", 1)[1] if "=" in a else argv[i + 1]
         if "=" not in a:
             i += 1
+    elif a == "--account" and i + 1 < len(argv) or a.startswith("--account="):
+        BOX_ACCOUNT = a.split("=", 1)[1] if "=" in a else argv[i + 1]
+        if "=" not in a:
+            i += 1
+    elif a == "--archive" and i + 1 < len(argv) or a.startswith("--archive="):
+        CLEAN_ARCHIVE = a.split("=", 1)[1] if "=" in a else argv[i + 1]
+        if "=" not in a:
+            i += 1
+    elif a == "--delete" and i + 1 < len(argv) or a.startswith("--delete="):
+        CLEAN_DELETE = a.split("=", 1)[1] if "=" in a else argv[i + 1]
+        if "=" not in a:
+            i += 1
+    elif a == "--all":
+        CLEAN_ALL = True
     elif a == "--limit" and i + 1 < len(argv) or a.startswith("--limit="):
         v = a.split("=", 1)[1] if "=" in a else argv[i + 1]
         if "=" not in a:
@@ -719,6 +1213,11 @@ while i < len(argv):
     else:
         rest.append(a)
     i += 1
+
+
+def parse_cats(s):
+    return [c.strip().lower() for c in s.split(",") if c.strip()]
+
 
 sub = rest[0].lower() if rest else ""
 if sub == "read":
@@ -768,7 +1267,33 @@ elif sub == "delete":
         print("usage: tess mail delete <id>"); sys.exit(2)
     cmd_simple_action(rest[1], "delete")
 elif sub == "boxes":
-    cmd_boxes()
+    if len(rest) > 1 and rest[1].lower() == "create":
+        if len(rest) < 3:
+            print("usage: tess mail boxes create <name> [--account <acct>]"); sys.exit(2)
+        cmd_boxes_create(" ".join(rest[2:]), BOX_ACCOUNT)
+    else:
+        cmd_boxes()
+elif sub == "bulk-archive":
+    if len(rest) < 3 or rest[1].lower() not in ("from", "search"):
+        print("usage: tess mail bulk-archive from <who> | search <text>"); sys.exit(2)
+    cmd_bulk_archive(rest[1].lower(), " ".join(rest[2:]))
+elif sub == "bulk-delete":
+    if len(rest) < 3 or rest[1].lower() not in ("from", "search"):
+        print("usage: tess mail bulk-delete from <who> | search <text>"); sys.exit(2)
+    cmd_bulk_delete(rest[1].lower(), " ".join(rest[2:]))
+elif sub == "bulk-move":
+    if len(rest) < 4 or rest[1].lower() not in ("from", "search"):
+        print("usage: tess mail bulk-move from <who> <mailbox> | search <text> <mailbox>"); sys.exit(2)
+    source = rest[1].lower()
+    if source == "from":
+        # last token is the mailbox; everything between "from" and it is the query
+        cmd_bulk_move(source, " ".join(rest[2:-1]), rest[-1])
+    else:
+        cmd_bulk_move(source, " ".join(rest[2:-1]), rest[-1])
+elif sub == "clean":
+    cmd_clean(parse_cats(CLEAN_ARCHIVE) if CLEAN_ARCHIVE else None,
+              parse_cats(CLEAN_DELETE) if CLEAN_DELETE else None,
+              all_mail=CLEAN_ALL)
 else:
     q = " ".join(rest).strip()
     ql = q.lower()

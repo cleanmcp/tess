@@ -113,9 +113,12 @@ case "$c" in
     "ACTIONS go through Mail.app (AppleScript): send <who> -- \"<subj>\" \"<body>\" · reply <id> -- \"<text>\" ·" \
     "  mark <id> read|unread · flag <id> [red|orange|yellow|green|blue|purple|gray|off] · archive <id> ·" \
     "  move <id> <mailbox> (tess mail boxes lists them) · delete <id>." \
+    "BULK: bulk-archive|bulk-delete|bulk-move from <who> | search <text> [mailbox]" \
+    "  · CLEAN: clean [--archive <cats>] [--delete <cats>]" \
+    "  · BOXES: boxes create <name> [--account <acct>]." \
     "send/reply/delete ALWAYS ask a human to confirm — agent calls get the exact command to hand over instead." \
     "Flags: --limit N · --json · --from <acct> (default From: \$TESS_MAIL_FROM in ~/.config/tess/config)." \
-    "${D}e.g. tess mail from yuriy · tess mail search \"pitch deck\" · tess mail send kevin -- \"Deck\" \"attached soon\"${R}" ;;
+    "${D}e.g. tess mail from yuriy · tess mail search \"pitch deck\" · tess mail clean --archive promos,social${R}" ;;
   calendar|cal) h "tess calendar [days]" "Upcoming events (incl. recurring). Default 7 days." ;;
   read|book) h "tess read [title]" "Reading companion for your current Apple Book: recap + gist for your page, explains anything, takes notes." ;;
   music)     h "tess music [play|pause|next|prev|search <q>|<song>]" \
