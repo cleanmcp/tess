@@ -47,7 +47,7 @@ c_red()   { printf "\033[31m%s\033[0m\n" "$*" >&2; }
 check_name() {
   case "${1:-}" in
     ""  ) return 0 ;;  # caller handles its own "missing name" usage error
-    -*  ) c_red "refusing feature name '$1' — looks like a flag. (help: $0 --help)"; exit 2 ;;
+    -*  ) c_red "refusing feature name '$1' — looks like a flag. (help: tess help new)"; exit 2 ;;
     .*|*/*|*[!A-Za-z0-9._-]*) c_red "refusing feature name '$1' — letters, digits, . _ - only"; exit 2 ;;
   esac
 }
@@ -121,7 +121,7 @@ while [ $# -gt 0 ]; do
     --base)  BASE="${2:-}"; [ -z "$BASE" ] && { c_red "--base needs a branch name"; exit 1; }; shift 2 ;;
     --fleet) FORCE_FLEET=1; shift ;;
     --all)   FORCE_FLEET=1; read -r -a _opt <<< "${TESS_REPOS_ALL:-${TESS_REPOS:-}}"; REPOS=("${_opt[@]}"); shift ;;
-    --*)     c_red "unknown flag '$1' (help: $0 --help)"; exit 2 ;;
+    --*)     c_red "unknown flag '$1' (help: tess help new)"; exit 2 ;;
     *) _pos+=("$1"); shift ;;
   esac
 done

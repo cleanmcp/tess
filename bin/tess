@@ -61,8 +61,11 @@ _hcom() {
 # external eye-candy/tools: fail with the install hint, not a raw shell error
 _need() { command -v "$1" >/dev/null 2>&1 && return 0; echo "tess: '$1' isn't installed${2:+ — $2}"; return 127; }
 
-# keep tess current: background, throttled (~6h), never blocks
-[ -x "$TESS_LIB/core/update.sh" ] && nohup "$TESS_LIB/core/update.sh" >/dev/null 2>&1 &
+# keep tess current: background, throttled (~6h), never blocks. It's a --ff-only pull that
+# refuses to touch a dirty tree. Opt out with TESS_NO_AUTOUPDATE=1 in ~/.config/tess/config —
+# `tess update` still works, you just decide when.
+export TESS_NO_AUTOUPDATE="${TESS_NO_AUTOUPDATE:-}"
+[ "$TESS_NO_AUTOUPDATE" = "1" ] || { [ -x "$TESS_LIB/core/update.sh" ] && nohup "$TESS_LIB/core/update.sh" >/dev/null 2>&1 & }
 
 menu() {
 cat <<EOF
@@ -123,7 +126,7 @@ cat <<EOF
      ${C}tess music${R} ${D}[lib|top|stats]${R}    Apple Music — play + sort/filter the whole library, build playlists
      ${C}tess read${R} ${D}[title]${R}             reading companion for your current Apple Book
 
-  ${B}${G}🖥️  APPS & STARTUP${R}
+  ${B}${G}🖥️  APPS & STARTUP${R} ${D}(macOS only)${R}
      ${C}tess${R} ${D}<app>${R} · ${C}apps${R}             open any app by name · fuzzy-pick one
      ${C}tess login${R}                    what opens at login ${D}(${C}rm${R}/${C}add${R} to edit)${R}
      ${C}tess startup${R}                  open your configured set ${D}(${C}install${R} = run at login)${R}
@@ -131,9 +134,11 @@ cat <<EOF
   ${B}${G}🩺 SYSTEM${R}
      ${C}tess git${R}                      visual git — branches/commits (lazygit)
      ${C}tess doctor${R} · ${C}disk${R}            health check · worktree disk usage
+     ${C}tess wire${R}                     teach every AI agent here about tess ${D}(skills + guardrail hook)${R}
      ${C}tess update${R} · ${C}commands${R}        pull the latest · your custom commands (survive updates)
      ${C}tess cheat${R} · ${C}help${R} ${D}<cmd>${R}       the full cheatsheet · detailed help for one command
-     ${C}tess fix-files${R}                permanently raise the macOS open-file limit
+     ${C}tess --version${R}                which tess this is ${D}(version + commit)${R}
+     ${C}tess fix-files${R}                permanently raise the open-file limit ${D}(macOS only)${R}
 
   ${B}${G}🐾 FUN${R} ${D}(each needs its tool installed — tess tells you which)${R}
      ${C}tess fish${R} · ${C}matrix${R} · ${C}bonsai${R} · ${C}pipes${R} · ${C}dex${R}
@@ -274,7 +279,7 @@ case "$cmd" in
 esac
 
 # words that can never be feature/agent names (subcommands + obvious traps)
-TESS_RESERVED="help menu new repos ls list rm remove clean env branches path wt worktrees claude kimi agents agent loop resume r local offline small big med medium think partner post write brand boss ask voice listen git lg fish matrix bonsai pipes dex doctor disk cheat fix-files fixfiles update commands custom open app launch apps login startup brief hub person company add log people companies reminders todo todos followups calendar cal messages msg chat thread send text calls mail email music read book readpos done inbox report digest status team orchestrate ship wait watch approve inject tell kill hcom diff spend all"
+TESS_RESERVED="help menu version new repos ls list rm remove clean env branches path wt worktrees claude kimi agents agent loop resume r local offline small big med medium think partner post write brand boss ask voice listen git lg fish matrix bonsai pipes dex doctor disk cheat fix-files fixfiles update wire commands custom open app launch apps login startup brief hub person company add log people companies reminders todo todos followups calendar cal messages msg chat thread send text calls mail email music read book readpos done inbox report digest status team orchestrate ship wait watch approve inject tell kill hcom diff spend all"
 export TESS_RESERVED
 _validname() {  # _validname <name> <what> — reject flag-like/reserved/path-unsafe names
   local n="${1:-}" what="${2:-name}"
@@ -291,8 +296,14 @@ _validname() {  # _validname <name> <what> — reject flag-like/reserved/path-un
 
 case "$cmd" in
   menu|""|-h|--help) menu ;;
+  version|--version|-V)
+    v="$(cat "$TESS_HOME/VERSION" 2>/dev/null || echo "unknown")"
+    rev="$(git -C "$TESS_HOME" rev-parse --short HEAD 2>/dev/null || true)"
+    echo "tess $v${rev:+ ($rev)}"
+    ;;
   help) if [ $# -gt 0 ]; then exec bash "$TESS_LIB/core/help.sh" "$@"; else menu; fi ;;
   update)   exec bash "$TESS_LIB/core/update.sh" --now ;;
+  wire)     exec bash "$TESS_LIB/core/wire.sh" "$@" ;;   # teach every AI agent on this machine about tess
   todo|todos)    exec bash "$TESS_LIB/core/todo.sh" "$@" ;;
   commands|custom)
     cdir="$HOME/.config/tess/commands"; mkdir -p "$cdir"
@@ -330,7 +341,10 @@ case "$cmd" in
     [ -n "$_feat" ] && { _validname "$_feat" "feature name" || exit 2; }
     "$TESS_LIB/worktrees/wt" "$@" ;;
   repos)    exec bash "$TESS_LIB/worktrees/repos.sh" "$@" ;;
-  ls|list)  echo "${B}Your features:${R}"; "$TESS_LIB/worktrees/wt" ls ;;
+  ls|list)
+    _out="$("$TESS_LIB/worktrees/wt" ls)"
+    if [ -n "$_out" ]; then echo "${B}Your features:${R}"; printf '%s\n' "$_out"
+    else echo "no features yet. ${D}(create one: tess new <feature>)${R}"; fi ;;
   rm)       _validname "${1:-}" "feature name" || exit 2; "$TESS_LIB/worktrees/wt" rm "$@" ;;
   clean)    "$TESS_LIB/worktrees/wt" prune ;;
 
@@ -577,6 +591,13 @@ PL
   listen)   exec bash "$TESS_LIB/brain/listen.sh" ;;   # hands-free wake word
 
   *)
+    # An unknown FLAG is a typo, never a note title. Without this it falls through to the
+    # vault lookup below and searches (and prints) the user's private notes — so bail early.
+    case "$cmd" in
+      -*) echo "tess: unknown option '$cmd'" >&2
+          echo "     tess            the menu · tess help <cmd>   one command · tess --version" >&2
+          exit 2 ;;
+    esac
     # user's custom commands live in ~/.config/tess/commands/ (never in the repo,
     # so `git pull` never overwrites them). tess <name> -> run that script.
     if [ -x "$HOME/.config/tess/commands/$cmd" ]; then

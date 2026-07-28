@@ -83,6 +83,70 @@ t "todo done checks it off"  grep -q "^- \[x\] ($id)" "$TMP/state/todos.md"
 "$TESS" todo rm "$id" >/dev/null 2>&1
 t_not "todo rm removes it"   grep -q "($id)" "$TMP/state/todos.md"
 
+echo "== agent wiring (skills · plugin · guard hook) =="
+GUARD="$ROOT_DIR/hooks/guard.py"
+# the guard must be able to find `tess` for any of this to fire
+export PATH="$ROOT_DIR/bin:$PATH"
+_g() { echo "$2" | python3 "$GUARD" 2>/dev/null; }
+_denies() { _g x "$1" | grep -q '"deny"'; }
+_allows() { [ -z "$(_g x "$1")" ]; }
+
+t "plugin.json is valid json"      python3 -c "import json;json.load(open('$ROOT_DIR/.claude-plugin/plugin.json'))"
+t "marketplace.json is valid json" python3 -c "import json;json.load(open('$ROOT_DIR/.claude-plugin/marketplace.json'))"
+t "hooks.json is valid json"       python3 -c "import json;json.load(open('$ROOT_DIR/hooks/hooks.json'))"
+t "cursor-hooks.json is valid json" python3 -c "import json;json.load(open('$ROOT_DIR/hooks/cursor-hooks.json'))"
+# every skill needs frontmatter whose name matches its directory (hosts key off both)
+sk_fail=0
+for d in "$ROOT_DIR"/skills/*/; do
+  n="$(basename "$d")"
+  [ -f "$d/SKILL.md" ] || { echo "    no SKILL.md: $n"; sk_fail=1; continue; }
+  grep -q "^name: $n\$"   "$d/SKILL.md" || { echo "    name != dir: $n"; sk_fail=1; }
+  grep -q "^description: " "$d/SKILL.md" || { echo "    no description: $n"; sk_fail=1; }
+done
+[ "$sk_fail" = 0 ] && ok "every skill has matching name + description" || bad "every skill has matching name + description"
+
+t "guard denies git worktree add"    _denies '{"tool_name":"Bash","tool_input":{"command":"git worktree add ../f b"}}'
+t "guard denies it after cd &&"      _denies '{"tool_name":"Bash","tool_input":{"command":"cd /r && git worktree add ../f b"}}'
+t "guard denies git -C … worktree add" _denies '{"tool_name":"Bash","tool_input":{"command":"git -C /r worktree add ../f b"}}'
+t "guard denies worktree remove"     _denies '{"tool_name":"Bash","tool_input":{"command":"git worktree remove ../f"}}'
+t "guard allows worktree list"       _allows '{"tool_name":"Bash","tool_input":{"command":"git worktree list"}}'
+t "guard allows the string in echo"  _allows '{"tool_name":"Bash","tool_input":{"command":"echo git worktree add"}}'
+t "guard allows the string in rg"    _allows '{"tool_name":"Bash","tool_input":{"command":"rg \"git worktree add\" ."}}'
+t "guard honours the inline bypass"  _allows '{"tool_name":"Bash","tool_input":{"command":"TESS_ALLOW_RAW_GIT=1 git worktree add ../f b"}}'
+t "guard ignores non-Bash tools"     _allows '{"tool_name":"Read","tool_input":{"file_path":"x"}}'
+t "guard fails open on junk input"   _allows 'not json at all'
+t "guard speaks Cursor's schema"     bash -c "echo '{\"hook_event_name\":\"beforeShellExecution\",\"command\":\"git worktree add ../f b\"}' | python3 '$GUARD' | grep -q '\"permission\": \"deny\"'"
+t "guard never GRANTS permission"    bash -c "! echo '{\"hook_event_name\":\"beforeShellExecution\",\"command\":\"rm -rf /tmp/x\"}' | python3 '$GUARD' | grep -q 'allow'"
+t "guard fails open without tess"    bash -c "[ -z \"\$(echo '{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git worktree add a b\"}}' | env PATH=/nonexistent python3 '$GUARD')\" ]"
+t "tess wire --dry-run changes nothing" bash -c "HOME='$TMP/fakehome' '$TESS' wire --dry-run >/dev/null && [ ! -d '$TMP/fakehome/.agents' ]"
+t "tess help wire exits 0"          "$TESS" help wire
+
+echo "== first-run / OSS hygiene regressions =="
+FAKE="$TMP/fresh"; mkdir -p "$FAKE/home" "$FAKE/bin" "$FAKE/elsewhere"
+ln -sf "$(command -v git)" "$FAKE/bin/git" 2>/dev/null
+ln -sf "$(command -v python3)" "$FAKE/bin/python3" 2>/dev/null
+# a machine with git+python but NO agent CLI and NO fleet backend
+_fresh() { env -i HOME="$FAKE/home" PATH="$FAKE/bin:/usr/bin:/bin" TERM=dumb bash "$TESS" "$@" 2>&1; }
+
+t "tess --version reports a version" bash -c "'$TESS' --version | grep -qE '^tess [0-9]+\.[0-9]+'"
+t "VERSION file exists"              test -f "$ROOT_DIR/VERSION"
+t "CHANGELOG exists"                 test -f "$ROOT_DIR/CHANGELOG.md"
+t "uninstall.sh exists + parses"     bash -n "$ROOT_DIR/uninstall.sh"
+# an unknown flag must ERROR, never fall through to the vault note search
+t_not "unknown flag exits nonzero"   "$TESS" --definitely-not-a-command
+t "unknown flag says 'unknown option'" bash -c "'$TESS' --nope 2>&1 | grep -q 'unknown option'"
+# config.example must not ship placeholder repos as live settings
+t_not "config.example has no live TESS_REPOS" grep -qE '^TESS_REPOS=' "$ROOT_DIR/config.example"
+t "config.example documents the autoupdate opt-out" grep -q 'TESS_NO_AUTOUPDATE' "$ROOT_DIR/config.example"
+# spawn must refuse BEFORE creating anything when its deps are absent
+t "spawn preflights missing deps"    bash -c "! _o=\$(env -i HOME='$FAKE/home' PATH='$FAKE/bin:/usr/bin:/bin' bash '$TESS' claude probefeat 'x' 2>&1); echo \"\$_o\" | grep -q \"isn't on your PATH\""
+t "...and created NO worktree"       test ! -d "$FAKE/home/worktrees/probefeat"
+t "...and left no stray branch"      bash -c "! git -C '$ROOT_DIR' branch --list probefeat | grep -q ."
+# a fresh machine must not leak raw find/stderr noise
+t_not "tess ls leaks no find/stderr noise on a fresh machine" \
+  bash -c "env -i HOME='$FAKE/home' PATH='$FAKE/bin:/usr/bin:/bin' bash '$TESS' ls 2>&1 | grep -qE 'No such file or directory|^find:'"
+t "fleet cmds name a missing backend" bash -c "env -i HOME='$FAKE/home' PATH='$FAKE/bin:/usr/bin:/bin' bash '$TESS' status 2>&1 | grep -q 'backend'"
+
 echo "== teardown =="
 bash "$WT" rm feat1    >/dev/null 2>&1
 bash "$WT" rm featsolo >/dev/null 2>&1

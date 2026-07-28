@@ -1,0 +1,14 @@
+{
+  "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
+  "name": "tess",
+  "version": "0.1.0",
+  "description": "Session orchestration for AI development. Teaches the agent to run every stream of work as an isolated tess session — its own worktree, agent, and context — instead of piling changes into one branch.",
+  "author": {
+    "name": "Pratham",
+    "url": "https://github.com/cleanmcp/tess"
+  },
+  "homepage": "https://github.com/cleanmcp/tess",
+  "license": "MIT",
+  "keywords": ["worktrees", "agents", "orchestration", "git", "fleet", "sessions"],
+  "hooks": "./hooks/hooks.json"
+}

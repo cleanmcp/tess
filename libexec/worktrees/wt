@@ -27,7 +27,7 @@ case "${1:-ls}" in
   ls|list|"")
     # real worktree state, not just folders: a feature is LIVE if a repo
     # subfolder is an actual git worktree; otherwise it's a ghost shell.
-    find "$ROOT" -mindepth 1 -maxdepth 1 -type d ! -name '.*' ! -name "$(basename "${TESS_CORE:-repos}")" -print0 |
+    find "$ROOT" -mindepth 1 -maxdepth 1 -type d ! -name '.*' ! -name "$(basename "${TESS_CORE:-repos}")" -print0 2>/dev/null |
     while IFS= read -r -d '' f; do
       feat="$(basename "$f")"; live=""
       [ -e "$f/.git" ] && live="self"   # the dir itself is a checkout/worktree
@@ -63,7 +63,7 @@ case "${1:-ls}" in
     done
     # 2) sweep ghost feature shells: folders with no live worktree inside and
     #    nothing in them beyond tess's own orientation files
-    find "$ROOT" -mindepth 1 -maxdepth 1 -type d ! -name '.*' ! -name "$(basename "${TESS_CORE:-repos}")" -print0 |
+    find "$ROOT" -mindepth 1 -maxdepth 1 -type d ! -name '.*' ! -name "$(basename "${TESS_CORE:-repos}")" -print0 2>/dev/null |
     while IFS= read -r -d '' f; do
       live=0
       [ -e "$f/.git" ] && live=1        # the dir itself is a checkout/worktree

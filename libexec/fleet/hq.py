@@ -12,7 +12,8 @@ import sys
 import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "lib"))
-from tess_agents import (agents_under, brand, hcom, list_agents, press,
+from tess_agents import (BACKEND_MISSING, agents_under, backend_available, brand, hcom,
+                         list_agents, press,
                           screen_text, scrub, status_of, term_state)
 
 WORKTREE_ROOT = (os.environ.get("TESS_WORKTREE_ROOT") or os.path.expanduser("~/worktrees")).rstrip("/")
@@ -102,7 +103,9 @@ def cmd_digest(args):
         print(json.dumps(rows, indent=2))
         return
     if not rows:
-        print("no agents running. (spawn: tess claude <feat> \"<task>\")")
+        # an empty result and a missing backend look identical from here — say which it is
+        print(BACKEND_MISSING if not backend_available()
+              else "no agents running. (spawn: tess claude <feat> \"<task>\")")
         return
     for r in rows:
         icon = STATUS_ICON.get(r["status"], "◦")
@@ -135,7 +138,8 @@ def cmd_status(args):
         print(json.dumps(rows, indent=2))
         return
     if not rows:
-        print("no agents running. (spawn: tess claude <feat> \"<task>\" · fan out: tess team)")
+        print(BACKEND_MISSING if not backend_available()
+              else "no agents running. (spawn: tess claude <feat> \"<task>\" · fan out: tess team)")
         return
     blocked = [r for r in rows if r["status"] == "blocked"]
     for r in rows:

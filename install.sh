@@ -32,50 +32,14 @@ mkdir -p "$HOME/.config/tess/commands" "$HOME/.config/tess/templates" "$HOME/.co
 [ -f "$HOME/.config/tess/templates/README" ] || echo "Role templates for 'tess team' (yourname.md -> template: yourname). These override the built-ins in <repo>/templates/." > "$HOME/.config/tess/templates/README"
 [ -f "$HOME/.config/tess/modes/README" ] || echo "Agent-mode overrides for tess think/post/boss/read/orchestrate: a think.md / post.md / boss.md / read.md / orchestrate.md here overrides the repo's modes/. The repo copies stay current with 'tess update'; yours win." > "$HOME/.config/tess/modes/README"
 
-say "› teaching your AI agents about tess"
-_inject_primer() {   # wire (or refresh) the primer block in an agent instructions file
-  local f="$1"
-  mkdir -p "$(dirname "$f")"; [ -f "$f" ] || : > "$f"
-  python3 - "$f" "$HERE/agent-primer.md" <<'PY'
-import re, sys
-f, src = sys.argv[1], sys.argv[2]
-body = open(src).read().rstrip() + "\n"
-txt = open(f).read()
-pat = re.compile(r"<!-- tess-agent-primer.*?<!-- /tess-agent-primer -->\n?", re.S)
-if pat.search(txt):
-    open(f, "w").write(pat.sub(lambda _: body, txt))
-    print(f"  refreshed the tess primer in: {f}")
-else:
-    open(f, "w").write(txt.rstrip() + ("\n\n" if txt.strip() else "") + body)
-    print(f"  wired tess into: {f}")
-PY
-}
-[ -d "$HOME/.claude" ]     && _inject_primer "$HOME/.claude/CLAUDE.md"       # Claude Code
-[ -d "$HOME/.kimi-code" ]  && _inject_primer "$HOME/.kimi-code/AGENTS.md"    # Kimi
-[ -d "$HOME/.codex" ]      && _inject_primer "$HOME/.codex/AGENTS.md"        # Codex
-[ -d "$HOME/.claude" ] || [ -d "$HOME/.kimi-code" ] || [ -d "$HOME/.codex" ] || \
-  echo "  (no agent config dirs found — add agent-primer.md to your agent's instructions manually)"
-
-say "› surfacing your coding todos to every new session (SessionStart hook)"
-if [ -d "$HOME/.claude" ]; then
-  python3 - "$HOME/.claude/settings.json" <<'PY'
-import json, os, sys
-p = sys.argv[1]
-try:
-    d = json.load(open(p)) if os.path.exists(p) else {}
-except Exception:
-    print("  (couldn't parse settings.json — skipped; add a SessionStart hook running 'tess todo --hook')"); sys.exit(0)
-CMD = "command -v tess >/dev/null 2>&1 && tess todo --hook || exit 0"
-ss = d.setdefault("hooks", {}).setdefault("SessionStart", [])
-if any("tess todo --hook" in h.get("command", "") for g in ss for h in g.get("hooks", [])):
-    print("  already wired"); sys.exit(0)
-ss.append({"hooks": [{"type": "command", "command": CMD}]})
-json.dump(d, open(p, "w"), indent=2)
-print("  wired: open todos now show at the top of every new Claude session")
-PY
-else
-  echo "  (no ~/.claude — run 'tess todo --hook' from your agent's SessionStart hook manually)"
-fi
+say "› teaching every AI agent on this machine about tess"
+# Three layers, handled by `tess wire` (re-runnable any time — it's idempotent):
+#   skills  → portable SKILL.md linked into every skills root found
+#             (Claude Code · Cursor · Codex · Gemini · opencode)
+#   hooks   → a guard that blocks raw `git worktree` and redirects to `tess new`,
+#             plus the SessionStart todo list (Claude Code + Cursor)
+#   primer  → agent-primer.md injected into CLAUDE.md / AGENTS.md / GEMINI.md
+bash "$HERE/libexec/core/wire.sh"
 
 case ":$PATH:" in
   *":$BIN:"*) ;;

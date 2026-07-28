@@ -58,6 +58,21 @@ def hcom(*args, timeout=60):
     return r
 
 
+def backend_available():
+    """Is the fleet backend actually runnable?
+
+    hcom() turns a missing backend into an empty result, which reads identically to "no agents
+    running" — so a user with no backend installed is told the fleet is idle when in fact it was
+    never wired. Callers that report fleet state should check this first and say so.
+    """
+    import shutil
+    return shutil.which(HCOM[0]) is not None
+
+
+BACKEND_MISSING = ("the fleet backend isn't available — install uv "
+                   "(https://docs.astral.sh/uv) so tess can run it, or install hcom directly.")
+
+
 def hcom_json(*args, timeout=60):
     r = hcom(*args, timeout=timeout)
     if r.returncode != 0:
