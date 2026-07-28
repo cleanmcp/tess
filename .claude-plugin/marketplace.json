@@ -1,0 +1,17 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "tess",
+  "description": "tess — session orchestration for AI development. Spawn, watch, steer, and ship every stream of work in its own isolated session.",
+  "owner": {
+    "name": "Pratham",
+    "url": "https://github.com/cleanmcp/tess"
+  },
+  "plugins": [
+    {
+      "name": "tess",
+      "source": "./",
+      "description": "Makes the agent use tess: isolated worktrees per feature, a fleet of parallel sessions, and a persistent cross-session todo list. Blocks raw `git worktree` and redirects to `tess new`.",
+      "category": "workflow"
+    }
+  ]
+}

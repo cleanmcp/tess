@@ -151,7 +151,17 @@ case "$c" in
   doctor)    h "tess doctor" "Quick Mac health check: open-file limit, worktree count, local model." ;;
   fix-files|fixfiles) h "tess fix-files" "Permanently raise the macOS open-file limit (asks for your password)." ;;
   disk)      h "tess disk" "Disk usage of your worktrees (slow on big node_modules)." ;;
+  version|--version) h "tess --version" "Print the tess version and the commit it's running from." ;;
+  uninstall) h "./uninstall.sh [--yes]" \
+    "Remove what install.sh added: unwires your AI agents (skills, hooks, primers), removes the tess command, and offers to delete ~/.config/tess." \
+    "NEVER touches your source repos, your feature worktrees, or your notes vault — it prints where they are and leaves them alone." ;;
   update)    h "tess update" "Pull the latest tess now. (It also auto-pulls in the background on any command.)" ;;
+  wire)      h "tess wire [--dry-run] [--undo]" \
+    "Teach every AI coding agent on this machine about tess. Three layers:" \
+    "  skills  — portable SKILL.md linked into every skills root found (Claude Code, Cursor, Codex, Gemini, opencode). Loads on demand; costs nothing until relevant." \
+    "  hooks   — a guard that BLOCKS raw 'git worktree add/remove/move' and redirects to 'tess new' (Claude Code + Cursor). Bypass once with TESS_ALLOW_RAW_GIT=1." \
+    "  primer  — agent-primer.md injected into CLAUDE.md / AGENTS.md / GEMINI.md for agents without skill support." \
+    "Idempotent — re-run after any update. Symlinks, not copies, so 'tess update' refreshes every agent for free. --dry-run shows the plan; --undo removes everything." ;;
   cheat)     h "tess cheat" "Open the full cheatsheet." ;;
 
   help) h "tess help <command>" "Detailed help for one command. Every subcommand also takes --help/-h directly (always safe — never creates or spawns anything)." ;;

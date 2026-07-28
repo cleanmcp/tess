@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "hooks": {
+    "beforeShellExecution": [
+      {
+        "command": "__TESS_HOME__/hooks/guard.py",
+        "matcher": "worktree",
+        "timeout": 5
+      }
+    ],
+    "sessionStart": [
+      {
+        "command": "__TESS_HOME__/hooks/session-start.sh",
+        "timeout": 10
+      }
+    ]
+  }
+}

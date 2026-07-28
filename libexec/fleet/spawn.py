@@ -70,6 +70,47 @@ def die(msg, code=1):
     sys.exit(code)
 
 
+def preflight(tool):
+    """Check every dependency BEFORE touching disk.
+
+    Spawning creates a worktree and a branch. If the agent CLI or the fleet backend turns out
+    to be missing afterwards, the user is left with orphans they never asked for and have to
+    clean up by hand. So: verify first, mutate second.
+    """
+    import shutil
+
+    missing = []
+    if not shutil.which(tool):
+        hint = {"claude": "https://claude.com/claude-code",
+                "kimi": "https://code.kimi.com"}.get(tool, "")
+        missing.append(f"'{tool}' isn't on your PATH" + (f" — install it: {hint}" if hint else ""))
+    # the backend is how tess tracks, steers and tears the session down. tess runs it via
+    # `uvx hcom` when hcom itself isn't installed, so either one is enough.
+    if not shutil.which("hcom") and not shutil.which("uvx"):
+        missing.append("the fleet backend isn't available — install uv "
+                       "(https://docs.astral.sh/uv) so tess can run it, or install hcom directly")
+    if missing:
+        for m in missing:
+            print(f"tess: {m}", file=sys.stderr)
+        print("\nNothing was created. Fix the above and re-run — or use `tess new "
+              f"<feature>` for just the worktree, without an agent.", file=sys.stderr)
+        sys.exit(127)
+
+
+def rollback_worktree(feat):
+    """Tear down a worktree we created moments ago, after the spawn failed.
+
+    Best effort and quiet: the spawn error is the headline, not this.
+    """
+    print(f"tess: rolling back the worktree '{feat}' we just created…", file=sys.stderr)
+    r = subprocess.run(["bash", os.path.join(LIBEXEC, "worktrees", "wt"), "rm", feat],
+                       capture_output=True, text=True)
+    if r.returncode == 0:
+        print(f"tess: rolled back '{feat}' — nothing left behind.", file=sys.stderr)
+    else:
+        print(f"tess: couldn't roll back automatically — run: tess rm {feat}", file=sys.stderr)
+
+
 def valid_feat(n):
     if n.startswith("-") or n.startswith(".") or "/" in n:
         return False
@@ -247,11 +288,16 @@ def main():
             print(f"  then inject prompt ({len(prompt)} chars, transcript-confirmed)")
         return
 
+    # everything below this line touches disk — check the deps first
+    preflight(tool)
+
+    created = None
     if feat and feat != "." and not os.path.isdir(wdir):
         print(f"creating worktree '{feat}'…")
         r = subprocess.run(["bash", os.path.join(LIBEXEC, "worktrees", "worktree.sh"), feat])
         if r.returncode != 0:
             die(f"worktree creation failed for '{feat}'")
+        created = feat
         wdir = narrow_single_repo(wdir)
 
     print(f"spawning {tool} in {wdir}…")
@@ -312,6 +358,10 @@ def main():
         print(f"✓ {name} ready in {wdir}")
         print(f"  follow along: tess report {name} · tess agents · tess tell {name} -- <msg>")
     except AgentError as e:
+        # the agent never came up. If we made the worktree for this spawn, take it back —
+        # the user asked for a session, not for a stray worktree and branch to clean up.
+        if created:
+            rollback_worktree(created)
         die(e.msg, e.code)
 
 

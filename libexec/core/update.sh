@@ -11,6 +11,11 @@ REPO="$(cd "$(dirname "$src")/../.." 2>/dev/null && pwd)"
 force="${1:-}"
 stamp="$HOME/.config/tess/.last-update"
 
+# Opt out of the background self-update: TESS_NO_AUTOUPDATE=1 in ~/.config/tess/config (or the
+# environment). `tess update` still works — this only disables the unattended pull, for people
+# who'd rather decide when their tooling changes under them.
+if [ "$force" != "--now" ] && [ "${TESS_NO_AUTOUPDATE:-}" = "1" ]; then exit 0; fi
+
 if [ "$force" != "--now" ]; then
   now=$(date +%s)
   last=$(stat -f %m "$stamp" 2>/dev/null || stat -c %Y "$stamp" 2>/dev/null || echo 0)
