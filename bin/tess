@@ -31,6 +31,7 @@ if [ -f "$HOME/.config/tess/config" ]; then
   [ "$TESS_VAULT" != "$_prevault" ] && _VAULT_CONFIGURED=1
 fi
 export TESS_VAULT TESS_HUB TESS_WORKTREE_ROOT TESS_CORE TESS_REPOS TESS_REPOS_ALL TESS_MAIN_BRANCH TESS_STARTUP_OPEN TESS_STARTUP_QUIT
+export TESS_VAULT_CONFIGURED="$_VAULT_CONFIGURED"   # python helpers mirror _vault_ok's self-scaffold rule
 export TESS_NOTIFY_CONTACT="${TESS_NOTIFY_CONTACT:-}"   # phone pings (tess watch --phone)
 export TESS_MAIL_FROM="${TESS_MAIL_FROM:-}"             # default From account (tess mail send)
 
@@ -85,7 +86,8 @@ cat <<EOF
      ${C}tess clean${R} · ${C}branches${R}         sweep dead worktrees · delete merged branches
 
   ${B}${G}📋 TODOS${R} ${D}(persistent checklist — every new agent session sees the open ones)${R}
-     ${C}tess todo${R}                     list open ${D}(${C}add${R} <text> · ${C}done${R} <id> · ${C}rm${R} <id> · ${C}all${R})${R}
+     ${C}tess todo${R}                     list open ${D}(${C}add${R} <text> · ${C}start${R} <id> · ${C}done${R} <id> · ${C}rm${R} · ${C}all${R})${R}
+     ${C}tess todo board${R}               the same todos as a kanban board
 
   ${B}${G}🤖 SESSIONS${R} ${D}(worktree + agent + context — spawn one, resume any)${R}
      ${C}tess claude${R}|${C}kimi${R} ${D}[feat] ["task"] [--model M --effort E --readonly --auto --budget N]${R}
@@ -112,11 +114,19 @@ cat <<EOF
      ${C}tess done${R} ${D}<feat>${R}              teardown: kill agents + panes + worktrees
      ${C}tess agents${R} · ${C}kill${R} ${D}<agent|feat>${R}  live dashboard · kill
 
-  ${B}${G}🧠 BRAIN${R} ${D}(optional · any markdown notes vault — set TESS_VAULT; on-demand, no token cost)${R}
-     ${C}tess${R} ${D}<name>${R}                   read a note — a person, company, topic
-     ${C}tess people${R} · ${C}companies${R} · ${C}reminders${R}   rosters · every open follow-up
+  ${B}${G}🧠 VAULT${R} ${D}(your knowledge base · optional — point TESS_VAULT at any markdown folder; Lokus-native)${R}
+     ${C}tess vault${R}                    orient: the map — folders, boards, bases, where to write
+     ${C}tess${R} ${D}<name>${R}                   read a note ${D}(shadowed by a command? ${C}tess note show${R} <name>)${R}
+     ${C}tess note new${R} ${D}<n> [--in <folder>] [--template t]${R}   create a note in the right place
+     ${C}tess note${R} ${D}ls · path · show${R}    list notes · resolve a path · read one
      ${C}tess add${R} ${D}<name> -- <text>${R}     append to a note (creates it if new)
      ${C}tess person${R}|${C}company${R} ${D}<name> -- <desc>${R}  new contact/company note (shows in roster)
+     ${C}tess people${R} · ${C}companies${R} · ${C}reminders${R}   rosters · every open follow-up
+     ${C}tess kanban${R} ${D}[board]${R}           boards: view ${D}(${C}add${R} · ${C}move${R} · ${C}done${R} · ${C}rm${R} · ${C}new${R})${R}
+     ${C}tess tasks${R} ${D}[scope]${R}            every checkbox in your notes ${D}(${C}tasks done${R} <match> checks off)${R}
+     ${C}tess base query${R} ${D}--where "k=v"${R}  query notes like a database · ${C}tess bases${R}  saved views
+     ${C}tess links${R} ${D}<note>${R}             backlinks + outlinks ${D}(${C}--broken${R} = dead links)${R}
+     ${C}tess canvas${R} · ${C}vault init${R} ${D}<dir>${R}  Excalidraw canvases · scaffold a new workspace
      ${C}tess log${R} ${D}-- <text>${R} · ${C}brief${R} · ${C}hub${R}   quick capture · your NOW note · your hub note
 
   ${B}${G}📱 LIFE${R} ${D}(optional · macOS, local — grant permissions once)${R}
@@ -170,18 +180,26 @@ _vault_ok() {
 _lookup() {
   _vault_ok || return 1
   local q="$*" exact matches n file pick
-  # 1) exact note-name match wins
-  exact=$(find "$VAULT" -type f -iname "${q}.md" -not -path "*/.*/*" 2>/dev/null | head -1)
-  if [ -n "$exact" ]; then _show "$exact"; return 0; fi
+  # 0) a path (as printed by an ambiguity listing) is exact — always re-runnable
+  case "$q" in
+    */*|*.md) for file in "$VAULT/${q%.md}.md" "$VAULT/$q" "$q"; do
+                [ -f "$file" ] && { _show "$file"; return 0; }
+              done ;;
+  esac
+  # 1) exact note-name match: one -> show it; several -> fall through to the listing
+  exact=$(find "$VAULT" -type f -iname "${q}.md" -not -path "*/.*/*" 2>/dev/null)
+  if [ "$(printf '%s\n' "$exact" | grep -c .)" -eq 1 ] && [ -n "$exact" ]; then _show "$exact"; return 0; fi
+  matches="$exact"
   # 2) partial name match, else content match
-  matches=$(find "$VAULT" -type f -iname "*${q}*.md" -not -path "*/.*/*" 2>/dev/null | head -20)
+  [ -z "$matches" ] && matches=$(find "$VAULT" -type f -iname "*${q}*.md" -not -path "*/.*/*" 2>/dev/null | head -20)
   [ -z "$matches" ] && matches=$(grep -rilF "$q" "$VAULT" --include="*.md" 2>/dev/null | grep -v '/\.' | head -20)
   n=$(printf '%s\n' "$matches" | grep -c .)
   if [ "$n" -eq 0 ]; then echo "tess: no note found for '${q}'. (searched your vault)"; return 1; fi
   if [ "$n" -eq 1 ]; then _show "$matches"; return 0; fi
+  # ambiguous: agents get plain re-runnable rel paths + exit 3, humans get a picker
+  [ -t 0 ] || { printf '%s\n' "$matches" | sed "s#^$VAULT/##"; return 3; }
   echo "${B}notes matching '${q}':${R}"
   printf '%s\n' "$matches" | sed "s#$VAULT/##" | nl -w2 -s'. '
-  [ -t 0 ] || { echo "(multiple matches — refine the name)"; return 0; }
   printf "pick # (Enter to cancel): "; read -r pick
   case "$pick" in ''|*[!0-9]*) echo "cancelled."; return 0 ;; esac
   file=$(printf '%s\n' "$matches" | sed -n "${pick}p")
@@ -197,7 +215,23 @@ _add() {
     if [ $seen -eq 0 ]; then name="${name:+$name }$a"; else text="${text:+$text }$a"; fi
   done
   [ -z "$name" ] && { echo "usage: tess add <note name> -- <text>"; return 1; }
-  file=$(find "$VAULT" -type f -iname "${name}.md" -not -path "*/.*/*" 2>/dev/null | head -1)
+  # a vault-relative path is exact; a bare name must be unambiguous — appending to
+  # a guessed one of several same-named notes is a silent wrong write
+  file=""
+  case "$name" in
+    */*|*.md) [ -f "$VAULT/${name%.md}.md" ] && file="$VAULT/${name%.md}.md" ;;
+  esac
+  if [ -z "$file" ]; then
+    local _matches _n
+    _matches=$(find "$VAULT" -type f -iname "${name}.md" -not -path "*/.*/*" 2>/dev/null)
+    _n=$(printf '%s\n' "$_matches" | grep -c .)
+    if [ "$_n" -gt 1 ]; then
+      printf '%s\n' "$_matches" | sed "s#^$VAULT/##"
+      echo "tess: several notes named '$name' — re-run with the exact path: tess add <path> -- <text>" >&2
+      return 3
+    fi
+    file=$(printf '%s\n' "$_matches" | head -1)
+  fi
   if [ -z "$file" ]; then
     mkdir -p "$HUB/Inbox"; file="$HUB/Inbox/${name}.md"
     { echo "---"; echo "title: ${name}"; echo "tags: [inbox]";
@@ -279,15 +313,22 @@ case "$cmd" in
 esac
 
 # words that can never be feature/agent names (subcommands + obvious traps)
-TESS_RESERVED="help menu version new repos ls list rm remove clean env branches path wt worktrees claude kimi agents agent loop resume r local offline small big med medium think partner post write brand boss ask voice listen git lg fish matrix bonsai pipes dex doctor disk cheat fix-files fixfiles update wire commands custom open app launch apps login startup brief hub person company add log people companies reminders todo todos followups calendar cal messages msg chat thread send text calls mail email music read book readpos done inbox report digest status team orchestrate ship wait watch approve inject tell kill hcom diff spend all"
+TESS_RESERVED="help menu version new repos ls list rm remove clean env branches path wt worktrees claude kimi agents agent loop resume r local offline small big med medium think partner post write brand boss ask voice listen git lg fish matrix bonsai pipes dex doctor disk cheat fix-files fixfiles update wire commands custom open app launch apps login startup brief hub person company add log people companies reminders todo todos followups calendar cal messages msg chat thread send text calls mail email music read book readpos done inbox report digest status team orchestrate ship wait watch approve inject tell kill hcom diff spend all vault note notes kanban tasks base bases links canvas"
 export TESS_RESERVED
-_validname() {  # _validname <name> <what> — reject flag-like/reserved/path-unsafe names
+_validpath() {  # _validpath <name> <what> — flag/path safety only, NO reserved check.
+  # Used on paths that manage EXISTING features (rm/path/env/done/ship): a feature
+  # created before its name became a reserved word must stay manageable forever.
   local n="${1:-}" what="${2:-name}"
   [ -z "$n" ] && { echo "tess: missing $what" >&2; return 1; }
   case "$n" in
     -*) echo "tess: '$n' looks like a flag, not a $what. (want help? tess help $cmd)" >&2; return 1 ;;
     .*|*/*|*[!A-Za-z0-9._-]*) echo "tess: '$n' is not a safe $what (letters, digits, . _ - only)" >&2; return 1 ;;
   esac
+  return 0
+}
+_validname() {  # _validname <name> <what> — _validpath + reserved words (CREATE paths)
+  _validpath "$@" || return 1
+  local n="${1:-}" what="${2:-name}"
   case " $TESS_RESERVED " in
     *" $n "*) echo "tess: '$n' is a reserved tess word — pick another $what" >&2; return 1 ;;
   esac
@@ -345,13 +386,13 @@ case "$cmd" in
     _out="$("$TESS_LIB/worktrees/wt" ls)"
     if [ -n "$_out" ]; then echo "${B}Your features:${R}"; printf '%s\n' "$_out"
     else echo "no features yet. ${D}(create one: tess new <feature>)${R}"; fi ;;
-  rm)       _validname "${1:-}" "feature name" || exit 2; "$TESS_LIB/worktrees/wt" rm "$@" ;;
+  rm)       _validpath "${1:-}" "feature name" || exit 2; "$TESS_LIB/worktrees/wt" rm "$@" ;;
   clean)    "$TESS_LIB/worktrees/wt" prune ;;
 
   path)     # print a worktree path (for agents: cd "$(tess path <feature> [repo])")
     feat="${1:-}"; repo="${2:-}"
     [ -z "$feat" ] && { echo "usage: tess path <feature> [repo]" >&2; exit 1; }
-    _validname "$feat" "feature name" || exit 2
+    _validpath "$feat" "feature name" || exit 2
     p="$TESS_WORKTREE_ROOT/$feat"; [ -n "$repo" ] && p="$p/$repo"
     if [ -z "$repo" ] && [ -d "$p" ] && [ ! -e "$p/.git" ]; then
       # single-repo feature: hand back the repo dir itself, so whoever cd's
@@ -390,7 +431,7 @@ case "$cmd" in
 
   env)
     feat="${1:-}"; [ -z "$feat" ] && { echo "usage: tess env <feature>"; exit 1; }
-    _validname "$feat" "feature name" || exit 2
+    _validpath "$feat" "feature name" || exit 2
     fdir="$TESS_WORKTREE_ROOT/$feat"
     [ -d "$fdir" ] || { echo "no feature '$feat' (see: tess ls)"; exit 1; }
     echo "${B}refreshing env for '$feat'${R}"
@@ -450,7 +491,7 @@ case "$cmd" in
   diff)     exec python3 "$TESS_LIB/fleet/hq.py" diff "$@" ;;
   approve)  exec python3 "$TESS_LIB/fleet/hq.py" approve "$@" ;;
   inject)   exec python3 "$TESS_LIB/fleet/inject.py" "$@" ;;
-  done)     _validname "${1:-}" "feature name" || exit 2; exec python3 "$TESS_LIB/fleet/done.py" "$@" ;;
+  done)     _validpath "${1:-}" "feature name" || exit 2; exec python3 "$TESS_LIB/fleet/done.py" "$@" ;;
   hcom)     _hcom "$@"; exit $? ;;   # raw backend passthrough (power users/agents): tess hcom <anything>
   report)   exec python3 "$TESS_LIB/fleet/hq.py" report "$@" ;;
   digest)   exec python3 "$TESS_LIB/fleet/hq.py" digest "$@" ;;
@@ -458,7 +499,7 @@ case "$cmd" in
   inbox)    exec python3 "$TESS_LIB/fleet/comms.py" inbox "$@" ;;
   team)     exec python3 "$TESS_LIB/fleet/team.py" "$@" ;;
   orchestrate|orch) exec python3 "$TESS_LIB/fleet/orchestrate.py" "$@" ;;
-  ship)     _validname "${1:-}" "feature name" || exit 2; exec python3 "$TESS_LIB/fleet/ship.py" ship "$@" ;;
+  ship)     _validpath "${1:-}" "feature name" || exit 2; exec python3 "$TESS_LIB/fleet/ship.py" ship "$@" ;;
   spend)    exec python3 "$TESS_LIB/fleet/ship.py" spend "$@" ;;
   wait)     exec python3 "$TESS_LIB/fleet/watch.py" wait "$@" ;;
   watch)    exec python3 "$TESS_LIB/fleet/watch.py" watch "$@" ;;
@@ -558,7 +599,7 @@ PL
     echo "${G}✓ done${R} — cap raised now and on every reboot. Check with: tess doctor"
     ;;
 
-  # --- brain / notes ---
+  # --- brain / notes / vault ---
   brief)    _vault_ok && { [ -f "$HUB/NOW.md" ] && _show "$HUB/NOW.md" || echo "no NOW note yet — start it: tess add NOW -- <what's going on>"; } ;;
   hub)      _vault_ok && { [ -f "$HUB/hub.md" ] && _show "$HUB/hub.md" || echo "no hub note yet — start it: tess add hub -- <text>"; } ;;
   person)   _newnote "People" "person" "$@" ;;
@@ -567,7 +608,16 @@ PL
   log)      _log "$@" ;;
   people)   python3 "$TESS_LIB/brain/list.py" people ;;
   companies|company-list) python3 "$TESS_LIB/brain/list.py" companies ;;
-  reminders|followups) python3 "$TESS_LIB/brain/list.py" reminders ;;
+  reminders|followups) exec python3 "$TESS_LIB/brain/taskscan.py" reminders-compat "$@" ;;
+  vault)    exec python3 "$TESS_LIB/brain/vault.py" "$@" ;;
+  canvas)   exec python3 "$TESS_LIB/brain/vault.py" canvas "$@" ;;
+  note)     exec python3 "$TESS_LIB/brain/note.py" "$@" ;;
+  notes)    exec python3 "$TESS_LIB/brain/note.py" ls "$@" ;;
+  kanban)   exec python3 "$TESS_LIB/brain/kanban.py" "$@" ;;
+  tasks)    exec python3 "$TESS_LIB/brain/taskscan.py" "$@" ;;
+  base)     exec python3 "$TESS_LIB/brain/basequery.py" base "$@" ;;
+  bases)    exec python3 "$TESS_LIB/brain/basequery.py" bases "$@" ;;
+  links)    exec python3 "$TESS_LIB/brain/linkscan.py" "$@" ;;
 
   # --- life (macOS: calendar / messages / calls) ---
   calendar|cal) exec python3 "$TESS_LIB/life/cal.py" "$@" ;;
@@ -602,6 +652,12 @@ PL
     # so `git pull` never overwrites them). tess <name> -> run that script.
     if [ -x "$HOME/.config/tess/commands/$cmd" ]; then
       exec "$HOME/.config/tess/commands/$cmd" "$@"
+    fi
+    # an EXACT note-name match beats the app fallback — the vault is the primary
+    # brain; `tess safari` still opens Safari unless a safari.md note exists
+    if [ $# -eq 0 ] && [ -d "$VAULT" ] && \
+       [ -n "$(find "$VAULT" -type f -iname "${cmd}.md" -not -path "*/.*/*" 2>/dev/null | head -1)" ]; then
+      _lookup "$cmd"; exit $?
     fi
     # bare `tess <word>`: an installed app -> open it
     if [ $# -eq 0 ]; then

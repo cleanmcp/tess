@@ -13,8 +13,10 @@
 - This is the shared work-tracker across sessions. When you finish a listed item, check it off; when you uncover follow-up work, add it. Prefer it over an in-session-only todo so the next session (and the human) sees the real state. Don't restate the whole list back to the user unless asked.
 
 **Memory / the user's vault (OPTIONAL — only if a vault is configured; read/write on demand, never bulk-load it):**
-- `tess <name>` read a note · `tess people`/`companies`/`reminders` · `tess brief` (what's going on)
-- `tess add <name> -- <text>` · `tess person <name> -- <desc>` · `tess log -- <text>`
+- Orient first: `tess vault` (the map — folders, boards, bases, and the "write here when unsure" default). `tess brief` = what's going on now.
+- Read: `tess <name>` a note · `tess note show|path <name>` (works when a note name collides with a command) · `tess links <note>` backlinks.
+- Write: person → `tess person <name> -- <desc>` · company → `tess company` · append a fact → `tess add <name> -- <text>` · quick capture → `tess log -- <text>` · a real new document → `tess note new <name> [--in <folder>] [--template t]`.
+- Boards/tasks/queries: `tess kanban` (add/move/done) · `tess tasks` (checkboxes in notes; `tasks done <match>`) · `tess base query --where "k=v"` · `tess canvas`. Ambiguous match = exit 3 + candidates — re-run exact, never guess. NEVER hand-edit .kanban/.base files — tess writes app-valid ones.
 
 **The fleet (driving other agents — tess wraps hcom; never call hcom directly except via `tess hcom`):**
 - Spawn: `tess claude|kimi <feat> "<task>" [--model M --effort E --readonly --budget N]` — worktree auto-created, settings verified. Fan out many: `tess team <spec.yaml>` (use `--dry-run` first). A full AI lead: `tess orchestrate "<goal>"`.

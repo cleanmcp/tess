@@ -69,11 +69,15 @@ The checklist survives the session. Open items are injected into every new agent
 ```bash
 tess todo                          # list open
 tess todo add [-p <project>] <text>
+tess todo start <id>               # mark in progress ([/] — survives the session)
 tess todo done <id>
+tess todo board                    # the same list as a kanban board
 ```
 
-Check items off when you finish them; add follow-up work you uncover. Prefer this over an
-in-session-only list. Don't recite the whole list back to the user unless asked.
+Check items off when you finish them; mark the one you're on with `start`; add follow-up
+work you uncover. Prefer this over an in-session-only list. Don't recite the whole list
+back to the user unless asked. (These are coding todos — tasks inside the user's NOTES are
+`tess tasks`, see the tess-vault skill.)
 
 ## Notes
 

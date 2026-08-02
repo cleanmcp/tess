@@ -5,6 +5,27 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+### Added
+- **The vault layer — tess as a knowledge-base provider for agents.** `tess vault` (the
+  orientation map + `folders`/`mkdir`/`init <dir>` workspace scaffolding), `tess note`
+  (new/ls/path/show — proper frontmatter, templates with `{{vars}}`), `tess kanban` (full
+  board CRUD on Lokus-native `.kanban` files: app-schema-exact, atomic, clobber-safe),
+  `tess tasks` (every checkbox state across notes + `tasks done <match>`), `tess base`
+  (database-style queries over frontmatter + saved `.base` views), `tess links`
+  (backlinks/outlinks/`--broken`), `tess canvas` (Excalidraw). Everything degrades to a
+  plain markdown folder — Lokus extras light up when present. Docs: `docs/vault.md`.
+- **`tess todo start <id>` + `tess todo board`** — an in-progress state (`[/]`) and a
+  kanban view for the cross-session coding checklist.
+- **New `tess-vault` skill** teaching agents the whole layer (where to write, the
+  todo-vs-tasks-vs-kanban distinction, the exit-3 ambiguity contract). Existing installs:
+  re-run `tess wire` once to pick it up.
+
+### Changed
+- `tess reminders` now shows every open checkbox state (`[ ]` `[/]` `[!]` `[?]` `[>]`),
+  not just `- [ ]`.
+- Reserved-word safety: managing an EXISTING feature (`rm`/`path`/`env`/`done`/`ship`)
+  no longer rejects names that later became reserved words — only creation does.
+
 ## [0.1.0] — 2026-07-27
 
 First tagged release. tess had been an internal tool; this is the pass that makes it safe to hand to someone else's laptop.
