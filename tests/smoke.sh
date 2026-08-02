@@ -11,7 +11,8 @@ TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
 
 export TESS_WORKTREE_ROOT="$TMP/wtroot" TESS_CORE="$TMP/core" \
        TESS_REPOS="repo-a repo-b" TESS_REPOS_ALL="repo-a repo-b" \
-       TESS_MAIN_BRANCH=main TESS_GIT_REMOTE="" TESS_STATE="$TMP/state"
+       TESS_MAIN_BRANCH=main TESS_GIT_REMOTE="" TESS_STATE="$TMP/state" \
+       TESS_VAULT="$TMP/vault" TESS_HUB="$TMP/vault/hub"
 
 pass=0; fail=0
 ok()  { pass=$((pass+1)); echo "  ✓ $1"; }
@@ -83,6 +84,117 @@ t "todo done checks it off"  grep -q "^- \[x\] ($id)" "$TMP/state/todos.md"
 "$TESS" todo rm "$id" >/dev/null 2>&1
 t_not "todo rm removes it"   grep -q "($id)" "$TMP/state/todos.md"
 
+echo "== todos: in-progress + board =="
+"$TESS" todo add -p smoke "wip item" >/dev/null 2>&1
+id2="$(sed -nE 's/^- \[ \] \(([0-9a-f]{3})\) wip item.*/\1/p' "$TMP/state/todos.md" | head -1)"
+t "todo start marks [/]"        bash -c "'$TESS' todo start '$id2' && grep -q '^- \[/\] ($id2)' '$TMP/state/todos.md'"
+t "todo list still shows [/]"   bash -c "'$TESS' todo | grep -q 'wip item'"
+t "todo --hook shows [/]"       bash -c "'$TESS' todo --hook | grep -q 'wip item'"
+t "todo board renders columns"  bash -c "'$TESS' todo board | grep -qi 'progress'"
+t "todo done works from [/]"    bash -c "'$TESS' todo done '$id2' && grep -q '^- \[x\] ($id2)' '$TMP/state/todos.md'"
+"$TESS" todo rm "$id2" >/dev/null 2>&1
+t_not "todo start with no id is an error" "$TESS" todo start
+t_not "todo board created no junk todo"   grep -q ") board" "$TMP/state/todos.md"
+
+echo "== vault layer =="
+VFIX="$TMP/vault"
+mkdir -p "$VFIX/projects" "$VFIX/people" "$VFIX/templates" "$VFIX/.lokus/bases" "$VFIX/hub/Inbox"
+cat > "$VFIX/people/Ada Lovelace.md" <<'MD'
+---
+title: Ada Lovelace
+tags: [person]
+created: 2026-01-01
+description: mathematician
+---
+# Ada Lovelace
+See [[Analytical Engine]] and [[missing-note]].
+- [ ] follow up with Ada
+- [/] draft the memoir intro
+- [x] read the letters
+MD
+cat > "$VFIX/projects/Analytical Engine.md" <<'MD'
+---
+title: Analytical Engine
+tags: [project]
+created: 2026-01-02
+description: the machine
+---
+# Analytical Engine
+- [!] order the brass gears
+MD
+printf -- '---\nid: meeting\nname: "meeting"\n---\n# {{title}}\ndate: {{date}}\nmood: {{mood || "fine"}}\n' > "$VFIX/templates/meeting.md"
+cat > "$VFIX/.lokus/bases/people.base" <<'YAML'
+# Lokus Base: people
+name: people
+source:
+  type: folder
+  path: people
+  recursive: true
+views:
+  - name: table
+    type: table
+    columns: [title, path]
+    filters: []
+    sort: []
+YAML
+
+t "vault map runs"                   "$TESS" vault
+t "vault --json parses"              bash -c "'$TESS' vault --json | python3 -m json.tool >/dev/null"
+t "vault names the write target"     bash -c "'$TESS' vault | grep -qi 'when unsure'"
+t "vault folders lists projects"     bash -c "'$TESS' vault folders | grep -q projects"
+t "vault mkdir creates"              bash -c "'$TESS' vault mkdir research && [ -d '$VFIX/research' ]"
+t_not "vault mkdir refuses escape"   "$TESS" vault mkdir ../escape
+t_not "vault mkdir refuses dotdir"   "$TESS" vault mkdir .sneaky
+
+t "note new writes into --in"        bash -c "'$TESS' note new 'gear list' --in projects --tags parts && grep -q 'title: gear list' '$VFIX/projects/gear list.md'"
+t_not "note new refuses dupe"        "$TESS" note new "gear list" --in projects
+t "note new defaults to hub Inbox"   bash -c "'$TESS' note new 'stray thought' && [ -f '$VFIX/hub/Inbox/stray thought.md' ]"
+t "note new --template renders"      bash -c "'$TESS' note new 'sync w team' --template meeting && grep -q 'mood: fine' '$VFIX/hub/Inbox/sync w team.md'"
+t "note path resolves"               bash -c "[ -f \"\$('$TESS' note path 'Ada Lovelace')\" ]"
+t "note path ambiguity exits 3"      bash -c "'$TESS' note path a >/dev/null 2>&1; [ \$? -eq 3 ]"
+t "note show prints the note"        bash -c "'$TESS' note show 'Ada Lovelace' | grep -q 'Analytical'"
+t "note ls runs"                     "$TESS" note ls
+
+t "kanban new creates a board"       bash -c "'$TESS' kanban new Sprint && [ -f '$VFIX/Sprint.kanban' ]"
+t "kanban add writes a full card"    bash -c "'$TESS' kanban add 'ship it' --col 'In Progress' && python3 -c \"
+import json; b = json.load(open('$VFIX/Sprint.kanban'))
+c = b['columns']['in-progress']['cards'][0]
+need = {'id','title','tags','priority','linked_notes','checklist','created','modified'}
+assert need <= set(c) and c['title'] == 'ship it' and len(c['id']) == 36
+assert c['created'].endswith('+00:00')
+assert {'version','name','columns','settings','metadata'} <= set(b)\""
+t "kanban render shows the card"     bash -c "'$TESS' kanban | grep -q 'ship it'"
+t "kanban move"                      bash -c "'$TESS' kanban move ship Done && python3 -c \"
+import json; b = json.load(open('$VFIX/Sprint.kanban'))
+assert b['columns']['done']['cards'] and not b['columns']['in-progress']['cards']\""
+t "kanban rm"                        bash -c "'$TESS' kanban rm ship && python3 -c \"
+import json; b = json.load(open('$VFIX/Sprint.kanban'))
+assert not b['columns']['done']['cards']\""
+t_not "kanban unknown card errors"   "$TESS" kanban rm zzz-nope
+
+t "tasks lists open incl [/] [!]"    bash -c "'$TESS' tasks | grep -q 'brass gears' && '$TESS' tasks | grep -q 'memoir'"
+t "tasks hides done by default"      bash -c "! '$TESS' tasks | grep -q 'read the letters'"
+t "tasks --all includes done"        bash -c "'$TESS' tasks --all | grep -q 'read the letters'"
+t "tasks done flips only its line"   bash -c "'$TESS' tasks done 'follow up with Ada' && grep -q -- '- \[x\] follow up with Ada' '$VFIX/people/Ada Lovelace.md' && grep -q -- '- \[/\] draft the memoir' '$VFIX/people/Ada Lovelace.md'"
+t "reminders shows the open tasks"   bash -c "'$TESS' reminders | grep -q 'brass gears'"
+t_not "todo done rejects regex ids"  "$TESS" todo done '.*'
+
+t "bases lists the fixture"          bash -c "'$TESS' bases | grep -q people"
+t "base <name> executes"             bash -c "'$TESS' base people | grep -q 'Ada Lovelace'"
+t "base query filters by tag"        bash -c "'$TESS' base query --where 'tags=project' --cols title | grep -q Analytical"
+t "base query excludes non-matches"  bash -c "! '$TESS' base query --where 'tags=project' --cols title | grep -q 'Ada Lovelace'"
+
+t "links shows the backlink"         bash -c "'$TESS' links 'Analytical Engine' | grep -qi 'ada'"
+t "links --broken finds the dead one" bash -c "'$TESS' links --broken | grep -q 'missing-note'"
+
+t "canvas new writes excalidraw"     bash -c "'$TESS' canvas new sketch && python3 -c \"
+import json; d = json.load(open('$VFIX/sketch.excalidraw'))
+assert d.get('type') == 'excalidraw' and 'elements' in d\""
+t "vault init scaffolds a workspace" bash -c "'$TESS' vault init '$TMP/newws' && [ -d '$TMP/newws/.lokus' ] && [ -d '$TMP/newws/notes' ] && [ -f '$TMP/newws/Tasks.kanban' ]"
+
+t "reserved: tess new kanban refused" bash -c "'$TESS' new kanban 2>&1 | grep -q reserved"
+t "every new command has real help"  bash -c "for c in vault note kanban tasks base links canvas; do '$TESS' help \$c | grep -q \"tess \$c\" || exit 1; done"
+
 echo "== agent wiring (skills · plugin · guard hook) =="
 GUARD="$ROOT_DIR/hooks/guard.py"
 # the guard must be able to find `tess` for any of this to fire
@@ -146,6 +258,11 @@ t "...and left no stray branch"      bash -c "! git -C '$ROOT_DIR' branch --list
 t_not "tess ls leaks no find/stderr noise on a fresh machine" \
   bash -c "env -i HOME='$FAKE/home' PATH='$FAKE/bin:/usr/bin:/bin' bash '$TESS' ls 2>&1 | grep -qE 'No such file or directory|^find:'"
 t "fleet cmds name a missing backend" bash -c "env -i HOME='$FAKE/home' PATH='$FAKE/bin:/usr/bin:/bin' bash '$TESS' status 2>&1 | grep -q 'backend'"
+# vault helpers on a machine with NO vault: guidance naming TESS_VAULT, never a traceback
+t "vault cmds guide when unconfigured" \
+  bash -c "for c in vault 'note ls' kanban tasks bases; do env -i HOME='$FAKE/home' PATH='$FAKE/bin:/usr/bin:/bin' bash '$TESS' \$c 2>&1 | grep -q 'TESS_VAULT' || exit 1; done"
+t "reminders stays exit-0 unconfigured" \
+  bash -c "env -i HOME='$FAKE/home' PATH='$FAKE/bin:/usr/bin:/bin' bash '$TESS' reminders >/dev/null 2>&1"
 
 echo "== teardown =="
 bash "$WT" rm feat1    >/dev/null 2>&1

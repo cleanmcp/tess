@@ -29,6 +29,9 @@ tess brief                     your "what's going on" note
 tess log -- <text>             quick timestamped capture
 ```
 
+The full knowledge layer — `tess vault`, `note`, `kanban`, `tasks`, `base`, `links`,
+`canvas` — has its own page: **[The vault](vault.md)**.
+
 ## Messages · Calls · Calendar
 
 ```bash

@@ -32,11 +32,11 @@ case "$c" in
     "A single-repo feature returns the repo dir itself, so you always land inside a git repo." ;;
   wt)        h "tess wt" "Worktree status: every feature, its repos, branch, dirty count, and source repo." ;;
 
-  todo|todos) h "tess todo   ·   tess todo add [-p <project>] <text>   ·   tess todo done <id>" \
+  todo|todos) h "tess todo   ·   tess todo add [-p <project>] <text>   ·   tess todo start|done <id>   ·   tess todo board" \
     "A persistent coding checklist shared across sessions (markdown checkboxes in ~/.config/tess/state/todos.md)." \
     "Open items are injected at the top of every new agent session (a SessionStart hook running 'tess todo --hook'), so work survives the session that created it." \
-    "Subcommands: (bare)=list open · add · done <id…> · reopen <id> · rm <id> · clear (drop completed) · all · edit." \
-    "${D}e.g. tess todo add -p api \"add retries to the sync job\"${R}" ;;
+    "Subcommands: (bare)=list open · add · start <id> (mark in progress, [/]) · done <id…> · board (kanban view) · reopen <id> · rm <id> · clear (drop completed) · all · edit." \
+    "${D}e.g. tess todo add -p api \"add retries to the sync job\" · tess todo board${R}" ;;
 
   claude|kimi) h "tess claude|kimi [feat|.] [\"prompt\"] [--model M] [--effort E] [--file f]" \
     "Launch the agent. With a feature name, create/enter that worktree first ('.' = current dir, new pane)." \
@@ -106,7 +106,45 @@ case "$c" in
     "${D}e.g. tess loop claude \"add tests for the auth module and make them pass\"${R}" ;;
 
   people|companies) h "tess people | companies" "Roster of your contacts / companies (from note tags + folders)." ;;
-  reminders|followups) h "tess reminders" "Open follow-ups — every unchecked '- [ ]' item across your vault." ;;
+  reminders|followups) h "tess reminders" \
+    "Open follow-ups — every open checkbox across your vault (all states: [ ] [/] [!] [?] [>])." \
+    "The richer face is tess tasks: scoped scans, --json, and 'tess tasks done <match>' to check off." ;;
+  vault)     h "tess vault [map|folders|mkdir <rel/path>|init <dir>] [--json]" \
+    "Your knowledge base, oriented. Bare = the map: folders + note counts, kanban boards, bases," \
+    "templates, canvases — and the 'write here when unsure' default for new notes." \
+    "  folders = flat folder list · mkdir = new folder inside the vault (safe: no escapes/dotfolders)" \
+    "  init <dir> = scaffold a NEW workspace anywhere (.lokus/ + notes/ + Tasks.kanban — Lokus opens it natively)" \
+    "Works on any markdown folder (Obsidian, plain files); Lokus extras light up when present." \
+    "${D}e.g. tess vault · tess vault folders --json · tess vault init ~/Notes${R}" ;;
+  note|notes) h "tess note new <name> [--in <folder>] [--template <t>] [--tags a,b] [-- body]   ·   note ls|path|show" \
+    "Create + find notes properly. 'new' writes frontmatter (title/tags/created) into the right folder" \
+    "(default: the hub Inbox, else the vault root — see 'tess vault'). --template renders {{date}}/{{title}}/…" \
+    "  ls [folder]  newest notes · path <name>  resolve to a file path · show <name>  print one (the read" \
+    "  escape hatch when a note's name collides with a tess command). Ambiguous name = exit 3 + candidates." \
+    "${D}e.g. tess note new \"competitor teardown\" --in research --tags intel${R}" ;;
+  kanban)    h "tess kanban [board]   ·   kanban add [board] <title>   ·   move|done|rm <card>   ·   new <name>" \
+    "Kanban boards as .kanban files (Lokus-native JSON — the app loads what tess writes, and vice versa)." \
+    "Bare = render the board (or list them all). Cards match by id prefix or title substring;" \
+    "ambiguous = exit 3 + candidates. Writes are atomic and refuse to clobber a board an open app just saved." \
+    "Flags: --board <b> to disambiguate · --col/--desc/--due/--priority/--tags/--note on add · --json." \
+    "${D}e.g. tess kanban add \"ship the deck\" --col \"In Progress\" · tess kanban done deck${R}" ;;
+  tasks)     h "tess tasks [folder|note] [--all] [--json]   ·   tess tasks done <match> [--in <scope>]" \
+    "Every checkbox across your notes, all states: [ ] todo · [/] in progress · [!] urgent · [?] question ·" \
+    "[>] delegated · [-] cancelled · [x] done (done/cancelled hidden unless --all)." \
+    "'done <match>' checks off the matching open task in its source file (ambiguous = exit 3 + candidates)." \
+    "${D}e.g. tess tasks 06-Network · tess tasks done \"follow up with sam\"${R}" ;;
+  base|bases) h "tess base query [--from <folder>] [--where \"k<op>v\"]… [--sort k[:desc]] [--cols a,b]   ·   tess bases · base <name>" \
+    "Query notes like a database over their frontmatter + file stats (name/title/path/created/modified/size)." \
+    "Ops: = contains · == exact · != > >= < <= · \"k is-empty\" / \"k is-not-empty\" — quote every --where." \
+    "'tess bases' lists saved Lokus base views (.lokus/bases/*.base); 'tess base <name>' runs one." \
+    "${D}e.g. tess base query --where \"tags=person\" --sort modified:desc --cols title,path${R}" ;;
+  links)     h "tess links <note> [--json]   ·   tess links --broken" \
+    "The wiki-link graph: outlinks (resolved + unresolved) and backlinks for a note — aliases, headings," \
+    "embeds all count. --broken = every [[link]] in the vault that resolves to nothing, by source note." \
+    "${D}e.g. tess links \"Sam Altman\" · tess links --broken${R}" ;;
+  canvas)    h "tess canvas [new <name> [--in <folder>]]" \
+    "Excalidraw canvases in your vault. Bare = list; new = create an empty app-valid .excalidraw." \
+    "It's plain Excalidraw JSON — agents can write elements directly to draw diagrams; opens in Lokus or excalidraw.com." ;;
   person|company) h "tess person|company <name> -- <desc>" "Create a tagged contact/company note (shows in the roster)." ;;
   add)       h "tess add <name> -- <text>" "Append a line to a note (creates it if new)." ;;
   log)       h "tess log -- <text>" "Quick timestamped capture to your log note." ;;

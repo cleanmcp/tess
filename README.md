@@ -64,6 +64,7 @@ tess calendar 3              tess music top 20
 |---|---|
 | [Sessions & the fleet](docs/fleet.md) | spawn, monitor, steer, ship, budgets, `tess team`, orchestration |
 | [Worktrees](docs/worktrees.md) | the grammar, multi-repo features, the repo map |
+| [The vault](docs/vault.md) | your knowledge base: notes, kanban, tasks, bases, wiki links, canvases |
 | [Connectors](docs/connectors.md) | messages, mail, music, calendar, books, notes, voice |
 | [Agent integration](docs/agents.md) | skills, hooks, the Claude Code plugin |
 | [Config](docs/config.md) | every `TESS_*` var, custom commands, modes |
