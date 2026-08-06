@@ -3,10 +3,12 @@
 Read:    [query] · from <name|addr> · read <id> · search <text>
 Actions: send <who> -- <subj> <body> · reply <id> -- <text> · mark <id> read|unread ·
          flag <id> [color|off] · archive <id> · move <id> <mailbox> · delete <id>
+Grants: grant [--reply|--send|--delete] [--minutes N] [--uses N] · grants · revoke
 Flags: --limit N · --json · --from <addr>. Reads hit the sqlite store directly (never
-written); actions go through Mail.app via AppleScript. send/reply/delete always
-confirm with a human — non-interactive calls get the exact command to run instead."""
-import os, sys, re, glob, json, email, email.policy, sqlite3, subprocess, datetime
+written); actions go through Mail.app via AppleScript. send/reply/delete always need a
+human: the [y/N] at a terminal, or a send window the human opened with `tess mail grant`.
+With neither, non-interactive calls get the exact command to run instead."""
+import os, sys, re, glob, json, time, email, email.policy, sqlite3, subprocess, datetime
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "lib"))
 from tess_common import C, resolve, short, contacts_map  # noqa: E402
 
@@ -15,6 +17,133 @@ MAILROOT = f"{HOME}/Library/Mail"
 # mailboxes hidden from the default list (a query or `search` still reaches them)
 HIDDEN = {"spam", "junk", "trash", "deleted messages", "drafts", "sendlater"}
 BODY_SCAN_CAP = 2000  # newest bodies scanned by `search` (whole store, on this size)
+
+
+# ---------------- send grants ----------------
+# send/reply/delete are irreversible, so they always need a human. A TTY gets the usual
+# [y/N]. Anything else — an agent's tool call, a script, cron — is refused UNLESS a human
+# has deliberately opened a window with `tess mail grant`: a short-lived, use-capped,
+# scope-limited pass. It is opt-in, it expires on its own, and every send it covers is
+# logged. Nothing in here touches the Mail store, so it still works in a terminal that
+# has no Full Disk Access — which is exactly the terminal a human falls back to.
+CFGDIR = os.path.join(os.environ.get("XDG_CONFIG_HOME", f"{HOME}/.config"), "tess")
+GRANT_FILE = os.path.join(CFGDIR, "mail-grant.json")
+SENT_LOG = os.path.join(CFGDIR, "mail-sent.log")
+SCOPES = ("reply", "send", "delete")
+GRANT_MAX_MINUTES, GRANT_MAX_USES = 240, 25
+
+
+def grant_live():
+    """-> the grant dict if one is open, else None (absent, expired, spent or corrupt)."""
+    try:
+        with open(GRANT_FILE) as f:
+            g = json.load(f)
+    except Exception:
+        return None
+    if time.time() > g.get("expires", 0) or int(g.get("uses_left", 0)) <= 0:
+        return None
+    return g
+
+
+def grant_claim(kind, detail):
+    """Spend one use on `kind`. -> (covered?, uses left after). Never raises."""
+    g = grant_live()
+    if not g or kind not in g.get("scopes", []):
+        return False, 0
+    g["uses_left"] = int(g["uses_left"]) - 1
+    try:
+        with open(GRANT_FILE, "w") as f:
+            json.dump(g, f)
+        os.chmod(GRANT_FILE, 0o600)
+        with open(SENT_LOG, "a") as f:
+            f.write(f"{datetime.datetime.now().isoformat(timespec='seconds')}\t{kind}\t{detail}\n")
+    except Exception:
+        pass  # a bookkeeping failure must never silently re-authorize
+    if g["uses_left"] <= 0:
+        try:
+            os.remove(GRANT_FILE)
+        except OSError:
+            pass
+    return True, g["uses_left"]
+
+
+def cmd_grant(minutes, uses, scopes):
+    """Open a send window. A human at a real terminal only — this IS the approval."""
+    if not sys.stdin.isatty():
+        print("`tess mail grant` needs a real terminal — that's the whole point of it.")
+        print(f"{C.grey}  open Terminal and run:  tess mail grant{C.r}")
+        sys.exit(2)
+    minutes = max(1, min(int(minutes), GRANT_MAX_MINUTES))
+    uses = max(1, min(int(uses), GRANT_MAX_USES))
+    bad = [s for s in scopes if s not in SCOPES]
+    if bad:
+        print(f"unknown scope: {', '.join(bad)} — pick from {', '.join(SCOPES)}"); sys.exit(1)
+    print(f"\n  {C.bold}{C.mag}⚷  open a send window{C.r}")
+    print(f"  {C.grey}covers:{C.r}  {C.cyan}{', '.join(scopes)}{C.r}")
+    print(f"  {C.grey}for:{C.r}     {minutes} min, {uses} use(s) — whichever runs out first")
+    print(f"  {C.grey}meaning:{C.r}  agents and scripts can {'/'.join(scopes)} without asking you again")
+    print(f"  {C.grey}{'─' * 50}{C.r}")
+    try:
+        if input("open it? [y/N] ").strip().lower() not in ("y", "yes"):
+            print("cancelled."); sys.exit(0)
+    except (EOFError, KeyboardInterrupt):
+        print("cancelled."); sys.exit(0)
+    os.makedirs(CFGDIR, exist_ok=True)
+    with open(GRANT_FILE, "w") as f:
+        json.dump({"expires": time.time() + minutes * 60, "uses_left": uses,
+                   "scopes": list(scopes),
+                   "opened": datetime.datetime.now().isoformat(timespec="seconds")}, f)
+    os.chmod(GRANT_FILE, 0o600)
+    print(f"\n{C.green}✓ open{C.r} for {minutes} min / {uses} use(s) — {C.grey}tess mail revoke{C.r} closes it now.")
+    print(f"{C.grey}  sends it covers are logged to {SENT_LOG}{C.r}\n")
+
+
+def cmd_grants():
+    g = grant_live()
+    if AS_JSON:
+        print(json.dumps(g or {"open": False})); return
+    if not g:
+        print(f"\n  no send window open — {C.grey}tess mail grant{C.r} opens one.\n"); return
+    left = int(g["expires"] - time.time())
+    print(f"\n  {C.green}send window open{C.r}")
+    print(f"  {C.grey}covers:{C.r} {', '.join(g['scopes'])}")
+    print(f"  {C.grey}left:{C.r}   {left // 60}m {left % 60}s · {g['uses_left']} use(s)")
+    print(f"  {C.grey}opened:{C.r} {g.get('opened', '?')}\n")
+
+
+def cmd_revoke():
+    """Closing a window is always safe — no TTY needed, no confirmation."""
+    try:
+        os.remove(GRANT_FILE)
+        print(f"{C.green}✓ send window closed.{C.r}")
+    except FileNotFoundError:
+        print("no send window was open.")
+
+
+# grant/revoke/grants never read Mail, so they run BEFORE the store is opened below —
+# a terminal without Full Disk Access can still hand out (and take back) approval.
+if len(sys.argv) > 1 and sys.argv[1] in ("grant", "revoke", "grants"):
+    _a = sys.argv[2:]
+    AS_JSON = "--json" in _a
+    if sys.argv[1] == "revoke":
+        cmd_revoke()
+    elif sys.argv[1] == "grants":
+        cmd_grants()
+    else:
+        _mins, _uses, _scopes = 30, 3, []
+        _i = 0
+        while _i < len(_a):
+            if _a[_i] in ("--minutes", "-m") and _i + 1 < len(_a):
+                _mins = _a[_i + 1]; _i += 1
+            elif _a[_i] in ("--uses", "-n") and _i + 1 < len(_a):
+                _uses = _a[_i + 1]; _i += 1
+            elif _a[_i].lstrip("-") in SCOPES:
+                _scopes.append(_a[_i].lstrip("-"))
+            elif _a[_i] != "--json":
+                print(f"unknown flag: {_a[_i]}"); sys.exit(1)
+            _i += 1
+        cmd_grant(_mins, _uses, _scopes or ["reply"])
+    sys.exit(0)
 
 
 def die_perm():
@@ -538,18 +667,28 @@ def act_result(res, row, action):
             print(f"{C.grey}  (ids can change after a move — re-run `tess mail` for fresh ones){C.r}")
 
 
-def confirm_or_die(what, resume_cmd):
-    """send/reply/delete are irreversible — a HUMAN must approve, always."""
-    if not sys.stdin.isatty():
-        print(f"\n{what} needs a human — run it yourself:")
-        print(f"  {resume_cmd}")
-        sys.exit(2)
-    try:
-        ans = input(f"{what}? [y/N] ").strip().lower()
-    except (EOFError, KeyboardInterrupt):
-        print("cancelled."); sys.exit(0)
-    if ans not in ("y", "yes"):
-        print("cancelled."); sys.exit(0)
+def confirm_or_die(what, resume_cmd, kind, detail=""):
+    """send/reply/delete are irreversible — a HUMAN must approve. At a terminal that's
+    the [y/N]; away from one it's a send window the human opened with `tess mail grant`.
+    With neither, hand back the exact command instead of guessing."""
+    if sys.stdin.isatty():
+        try:
+            ans = input(f"{what}? [y/N] ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            print("cancelled."); sys.exit(0)
+        if ans not in ("y", "yes"):
+            print("cancelled."); sys.exit(0)
+        return
+    covered, left = grant_claim(kind, detail or what)
+    if covered:
+        print(f"\n{C.green}✓ {what} — approved by your send window{C.r} "
+              f"({left} use(s) left · {C.grey}tess mail revoke{C.r} closes it)")
+        return
+    print(f"\n{what} needs a human — run it yourself:")
+    print(f"  {resume_cmd}")
+    print(f"{C.grey}  …or let this through: open Terminal, `tess mail grant --{kind}`, "
+          f"then re-run.{C.r}")
+    sys.exit(2)
 
 
 def cmd_simple_action(rid, action, arg=""):
@@ -558,7 +697,8 @@ def cmd_simple_action(rid, action, arg=""):
     if action == "delete":
         print(f"\n  {C.red}delete{C.r} [{row['id']}] {C.cyan}{row['from_name']}{C.r} — "
               f"{short(row['subject'], 60)}  {C.grey}({row['account']}){C.r}")
-        confirm_or_die("delete (→ Trash)", f'tess mail delete {row["id"]}')
+        confirm_or_die("delete (→ Trash)", f'tess mail delete {row["id"]}', "delete",
+                       f'[{row["id"]}] {row["from_addr"]} — {short(row["subject"], 60)}')
     act_result(osa(ACT_SCRIPT, row["account"], mid, action, str(arg)), row, action)
 
 
@@ -647,7 +787,8 @@ def cmd_send(who, subj, body):
     print("\n".join("  " + l for l in body.splitlines()))
     print()
     flagpart = f' --from {sender}' if FROM_ADDR else ""
-    confirm_or_die("send", f'tess mail send{flagpart} "{addr}" -- "{subj}" "{body}"')
+    confirm_or_die("send", f'tess mail send{flagpart} "{addr}" -- "{subj}" "{body}"', "send",
+                   f'to {addr} from {sender} — {short(subj, 60)}')
     res = osa(SEND_SCRIPT, addr, subj, body, sender)
     if AS_JSON:
         print(json.dumps({"ok": res == "OK:sent", "action": "send", "to": addr,
@@ -667,7 +808,8 @@ def cmd_reply(rid, text):
     print(f"  {C.grey}{'─' * 50}{C.r}")
     print("\n".join("  " + l for l in text.splitlines()))
     print()
-    confirm_or_die("send reply", f'tess mail reply {row["id"]} -- "{text}"')
+    confirm_or_die("send reply", f'tess mail reply {row["id"]} -- "{text}"', "reply",
+                   f'[{row["id"]}] to {row["from_addr"]} — Re: {short(row["subject"], 60)}')
     res = osa(REPLY_SCRIPT, row["account"], mid, text, sender)
     if AS_JSON:
         print(json.dumps({"ok": res == "OK:replied", "action": "reply", "id": row["id"],

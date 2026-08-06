@@ -57,9 +57,31 @@ tess mail send <who> -- "<subj>" "<body>"
 tess mail reply <id> -- "<text>"
 tess mail flag|mark|unread|archive|move|delete <id>
 tess mail boxes                          list mailboxes
+
+tess mail grant [--reply|--send|--delete] [--minutes N] [--uses N]
+tess mail grants                         what's open right now
+tess mail revoke                         close it immediately
 ```
 
-Sends and replies are confirmed before they go.
+Sends and replies are confirmed before they go. At a terminal that's a `[y/N]`. Away from
+one — an agent's tool call, a script, cron — the answer is no, and you get the exact
+command handed back to run yourself.
+
+That fallback breaks down when the human isn't at a terminal that can reach Mail, so
+there's a second way to say yes: a **send window**.
+
+```bash
+tess mail grant --reply --uses 3 --minutes 15
+```
+
+You open it yourself, at a real terminal, answering a `[y/N]`. While it's open, agents and
+scripts can perform *that scope only*, at most that many times, for at most that long.
+Every action it covers is appended to `~/.config/tess/mail-sent.log`. It closes itself when
+the uses run out or the clock expires; `tess mail revoke` closes it now.
+
+`grant`, `grants` and `revoke` never read the Mail store, so they work in a terminal
+without Full Disk Access — which is exactly the terminal you fall back to. Defaults are
+deliberately small: 30 minutes, 3 uses, `reply` only. Capped at 4 hours / 25 uses.
 
 ## Music
 

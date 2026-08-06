@@ -164,7 +164,11 @@ case "$c" in
     "ACTIONS go through Mail.app (AppleScript): send <who> -- \"<subj>\" \"<body>\" · reply <id> -- \"<text>\" ·" \
     "  mark <id> read|unread · flag <id> [red|orange|yellow|green|blue|purple|gray|off] · archive <id> ·" \
     "  move <id> <mailbox> (tess mail boxes lists them) · delete <id>." \
-    "send/reply/delete ALWAYS ask a human to confirm — agent calls get the exact command to hand over instead." \
+    "send/reply/delete ALWAYS need a human. At a terminal that's the [y/N]; away from one it's a" \
+    "  SEND WINDOW you opened yourself: ${B}tess mail grant${R} [--reply|--send|--delete] [--minutes N] [--uses N]" \
+    "  — short-lived, use-capped, scoped, logged to ~/.config/tess/mail-sent.log. Default 30 min / 3 uses / reply." \
+    "  ${B}tess mail grants${R} shows what's open · ${B}tess mail revoke${R} closes it now. With no window, agent calls" \
+    "  still just get the exact command handed back. grant/grants/revoke need NO Full Disk Access." \
     "Flags: --limit N · --json · --from <acct> (default From: \$TESS_MAIL_FROM in ~/.config/tess/config)." \
     "${D}e.g. tess mail from alex · tess mail search \"pitch deck\" · tess mail send sam -- \"Deck\" \"attached soon\"${R}" ;;
   calendar|cal) h "tess calendar [days]" "Upcoming events (incl. recurring). Default 7 days." ;;
