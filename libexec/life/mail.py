@@ -590,9 +590,14 @@ REPLY_SCRIPT = '''on run argv
   set mid to item 2 of argv
   set replyTxt to item 3 of argv
   set fromAddr to item 4 of argv
+  set replyAll to (item 5 of argv is "all")
   tell application "Mail"
 ''' + FIND_BLOCK + '''
-    set r to reply theMsg without opening window
+    if replyAll then
+      set r to reply theMsg without opening window with reply to all
+    else
+      set r to reply theMsg without opening window without reply to all
+    end if
     set content of r to replyTxt
     if fromAddr is not "" then set sender of r to fromAddr
     send r
@@ -797,20 +802,52 @@ def cmd_send(who, subj, body):
         print(f"✓ sent to {name} <{addr}> from {sender}" if res == "OK:sent" else f"✗ {res}")
 
 
-def cmd_reply(rid, text):
+def thread_others(row):
+    """Everyone on the original besides its sender and the replying account — i.e. exactly
+    who a plain reply leaves out. Read off the message file; the index doesn't carry To/Cc."""
+    path, _ = find_emlx(row["id"])
+    if not path:
+        return []
+    try:
+        msg = parse_emlx(path)
+    except Exception:
+        return []
+    skip = {row["from_addr"].lower(), (row["account"] or "").lower()}
+    out, seen = [], set()
+    for hdr in ("To", "Cc"):
+        for a in re.split(r",\s*(?![^<]*>)", str(msg.get(hdr, "") or "")):
+            a = a.strip()
+            m = re.search(r"[\w.+-]+@[\w.-]+", a)
+            if not a or not m or m.group(0).lower() in skip or m.group(0).lower() in seen:
+                continue
+            seen.add(m.group(0).lower())
+            out.append(m.group(0))
+    return out
+
+
+def cmd_reply(rid, text, reply_all=False):
     row = get_row(rid, "reply")
     mid = message_id_of(row["id"])
     sender = pick_sender(FROM_ADDR) if FROM_ADDR else ""   # default: Mail replies from the thread's account
-    print(f"\n  {C.bold}{C.mag}↩  reply{C.r} to [{row['id']}] {C.cyan}{row['from_name']}{C.r} "
-          f"{C.grey}<{row['from_addr']}>{C.r}")
+    print(f"\n  {C.bold}{C.mag}↩  reply{C.r}{' all' if reply_all else ''} to [{row['id']}] "
+          f"{C.cyan}{row['from_name']}{C.r} {C.grey}<{row['from_addr']}>{C.r}")
     print(f"  {C.grey}subj:{C.r} Re: {row['subject']}")
     print(f"  {C.grey}via:{C.r}  {sender or row['account'] + ' (thread account)'}")
+    # who else was on the thread — so a silently-dropped cc can never be a surprise
+    others = [a.strip() for a in thread_others(row)]
+    if others:
+        label = "also to:" if reply_all else "DROPPED:"
+        col = C.grey if reply_all else C.yellow
+        print(f"  {col}{label}{C.r} {', '.join(o.strip() for o in others)}")
+        if not reply_all:
+            print(f"  {C.grey}          they will NOT receive this — use --all to keep them on{C.r}")
     print(f"  {C.grey}{'─' * 50}{C.r}")
     print("\n".join("  " + l for l in text.splitlines()))
     print()
-    confirm_or_die("send reply", f'tess mail reply {row["id"]} -- "{text}"', "reply",
+    confirm_or_die("send reply" + (" (all)" if reply_all else ""),
+                   f'tess mail reply {row["id"]}{" --all" if reply_all else ""} -- "{text}"', "reply",
                    f'[{row["id"]}] to {row["from_addr"]} — Re: {short(row["subject"], 60)}')
-    res = osa(REPLY_SCRIPT, row["account"], mid, text, sender)
+    res = osa(REPLY_SCRIPT, row["account"], mid, text, sender, "all" if reply_all else "")
     if AS_JSON:
         print(json.dumps({"ok": res == "OK:replied", "action": "reply", "id": row["id"],
                           "to": row["from_addr"]}))
@@ -840,12 +877,14 @@ if "--" in argv:
     cut = argv.index("--")
     argv, post = argv[:cut], argv[cut + 1:]
 
-LIMIT, AS_JSON, FROM_ADDR, rest = 25, False, "", []
+LIMIT, AS_JSON, FROM_ADDR, REPLY_ALL, rest = 25, False, "", False, []
 i = 0
 while i < len(argv):
     a = argv[i]
     if a == "--json":
         AS_JSON = True
+    elif a in ("--all", "-a"):
+        REPLY_ALL = True
     elif a == "--from" and i + 1 < len(argv) or a.startswith("--from="):
         FROM_ADDR = a.split("=", 1)[1] if "=" in a else argv[i + 1]
         if "=" not in a:
@@ -881,8 +920,8 @@ elif sub == "send":
     cmd_send(who, post[0], " ".join(post[1:]) if len(post) > 1 else "")
 elif sub == "reply":
     if len(rest) < 2 or not post:
-        print('usage: tess mail reply <id> -- "<text>"'); sys.exit(2)
-    cmd_reply(rest[1], " ".join(post))
+        print('usage: tess mail reply <id> [--all] -- "<text>"'); sys.exit(2)
+    cmd_reply(rest[1], " ".join(post), REPLY_ALL)
 elif sub == "mark":
     state = rest[2].lower() if len(rest) > 2 else "read"
     if len(rest) < 2 or state not in ("read", "unread"):

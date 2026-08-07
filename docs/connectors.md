@@ -54,7 +54,8 @@ tess mail read <id>                      full message
 tess mail search <text>                  full-text
 tess mail from <name|address>            everything from one person
 tess mail send <who> -- "<subj>" "<body>"
-tess mail reply <id> -- "<text>"
+tess mail reply <id> -- "<text>"         replies to the sender only
+tess mail reply <id> --all -- "<text>"   keeps everyone else on the thread
 tess mail flag|mark|unread|archive|move|delete <id>
 tess mail boxes                          list mailboxes
 
@@ -62,6 +63,10 @@ tess mail grant [--reply|--send|--delete] [--minutes N] [--uses N]
 tess mail grants                         what's open right now
 tess mail revoke                         close it immediately
 ```
+
+A plain `reply` goes to the sender alone. The preview always lists whoever that leaves
+out, under `DROPPED:` — a cc quietly vanishing off a thread should never be a surprise
+you discover in the reply. `--all` keeps them.
 
 Sends and replies are confirmed before they go. At a terminal that's a `[y/N]`. Away from
 one — an agent's tool call, a script, cron — the answer is no, and you get the exact

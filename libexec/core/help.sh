@@ -161,7 +161,7 @@ case "$c" in
   mail|email) h "tess mail [query] · from <who> · read <id> · search <text>  +  actions" \
     "Email via the local Apple Mail store. READS are sqlite-fast and never touch the store:" \
     "  bare/query = newest mail (spam+trash hidden unless queried) · read <id> = full body · search = subjects+bodies." \
-    "ACTIONS go through Mail.app (AppleScript): send <who> -- \"<subj>\" \"<body>\" · reply <id> -- \"<text>\" ·" \
+    "ACTIONS go through Mail.app (AppleScript): send <who> -- \"<subj>\" \"<body>\" · reply <id> [--all] -- \"<text>\" ·" \
     "  mark <id> read|unread · flag <id> [red|orange|yellow|green|blue|purple|gray|off] · archive <id> ·" \
     "  move <id> <mailbox> (tess mail boxes lists them) · delete <id>." \
     "send/reply/delete ALWAYS need a human. At a terminal that's the [y/N]; away from one it's a" \
