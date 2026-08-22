@@ -18,6 +18,7 @@ tess says so; report that to the user instead of improvising your own agent-laun
 ```bash
 tess claude <feature> "<task>"  [--model M] [--effort E] [--readonly] [--budget N] [--auto]
 tess kimi   <feature> "<task>"  …   # same shape, Kimi's own models + thinking levels
+tess cursor <feature> "<task>"  …   # Cursor Agent — --model, --context 272k|1m, --effort, --fast
 ```
 
 The worktree is created if missing. Roles are **enforced, not suggested**: `--readonly` runs the

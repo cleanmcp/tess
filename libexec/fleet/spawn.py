@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# tess claude|kimi [feat|.] ["prompt"] [flags] — spawn an hcom-coordinated
+# tess claude|kimi|cursor [feat|.] ["prompt"] [flags] — spawn an hcom-coordinated
 # agent with its task, model and effort GUARANTEED, not just requested.
 #
 #   feat         create/enter that worktree (via worktree.sh); '.' = current dir
@@ -34,6 +34,7 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "lib"))
 print = functools.partial(print, flush=True)
 from tess_agents import AgentError, inject, launch, press, screen_text, term_state
+from tess_cursor import HCOM_TOOL as CURSOR_HCOM, CLI_BIN as CURSOR_BIN, INSTALL_HINT as CURSOR_HINT, build_model as cursor_model
 
 WORKTREE_ROOT = os.environ.get("TESS_WORKTREE_ROOT") or os.path.expanduser("~/worktrees")
 LIBEXEC = os.environ.get("TESS_LIB") or os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
@@ -42,6 +43,13 @@ RESERVED = set((os.environ.get("TESS_RESERVED") or "").split())
 # friendly → real model ids (anything unknown passes through untouched)
 CLAUDE_MODELS = {"fable": "claude-fable-5", "fable5": "claude-fable-5",
                  "fable-5": "claude-fable-5"}
+
+# user-facing tool -> hcom launch name + PATH binary for preflight
+HCOM_TOOL = {"claude": "claude", "kimi": "kimi", "cursor": CURSOR_HCOM}
+PREFLIGHT_BIN = {"claude": "claude", "kimi": "kimi", "cursor": CURSOR_BIN}
+INSTALL_HINT = {"claude": "https://claude.com/claude-code",
+                "kimi": "https://code.kimi.com",
+                "cursor": CURSOR_HINT}
 
 # deploy-ish commands denied unless --can-deploy (claude permission patterns)
 DEPLOY_DENY = (os.environ.get("TESS_DEPLOY_DENY") or
@@ -80,10 +88,10 @@ def preflight(tool):
     import shutil
 
     missing = []
-    if not shutil.which(tool):
-        hint = {"claude": "https://claude.com/claude-code",
-                "kimi": "https://code.kimi.com"}.get(tool, "")
-        missing.append(f"'{tool}' isn't on your PATH" + (f" — install it: {hint}" if hint else ""))
+    binary = PREFLIGHT_BIN.get(tool, tool)
+    if not shutil.which(binary):
+        hint = INSTALL_HINT.get(tool, "")
+        missing.append(f"'{binary}' isn't on your PATH" + (f" — install it: {hint}" if hint else ""))
     # the backend is how tess tracks, steers and tears the session down. tess runs it via
     # `uvx hcom` when hcom itself isn't installed, so either one is enough.
     if not shutil.which("hcom") and not shutil.which("uvx"):
@@ -163,14 +171,15 @@ def kimi_footer(agent):
 def main():
     args = sys.argv[1:]
     if not args:
-        die("usage: tess claude|kimi [feat|.] [\"prompt\"] [--model M] [--effort E]")
+        die("usage: tess claude|kimi|cursor [feat|.] [\"prompt\"] [--model M] [--effort E]")
     tool = args.pop(0)
-    if tool not in ("claude", "kimi"):
-        die(f"unknown tool '{tool}' (claude or kimi)")
+    if tool not in HCOM_TOOL:
+        die(f"unknown tool '{tool}' (claude, kimi, or cursor)")
 
-    feat = prompt = pfile = model = effort = tag = budget = None
+    feat = prompt = pfile = model = effort = tag = budget = context = None
     auto_trust, dry = True, False
     readonly = can_deploy = auto_mode = False
+    fast = fast_set = False
     pos = []
 
     def val(i):
@@ -190,13 +199,26 @@ def main():
         elif a == "--effort":
             effort = val(i)
             i += 1
+        elif a == "--context":
+            if tool != "cursor":
+                die("--context is cursor-only (Context: 272k / 1m)")
+            context = val(i)
+            i += 1
+        elif a == "--fast":
+            if tool != "cursor":
+                die("--fast is cursor-only")
+            fast, fast_set = True, True
+        elif a == "--no-fast":
+            if tool != "cursor":
+                die("--no-fast is cursor-only")
+            fast, fast_set = False, True
         elif a == "--tag":
             tag = val(i)
             i += 1
         elif a == "--budget":
             budget = val(i)
             i += 1
-        elif a in ("--auto", "--auto-mode"):
+        elif a in ("--auto", "--auto-mode", "--yolo"):
             auto_mode = True
         elif a == "--readonly":
             readonly = True
@@ -245,33 +267,59 @@ def main():
 
     if tool == "claude" and model:
         model = CLAUDE_MODELS.get(model.lower(), model)
+    if tool == "cursor" and (model or context or effort or fast_set):
+        model = cursor_model(model, context=context, effort=effort,
+                             fast=fast if fast_set else None)
+        effort = None  # baked into bracket overrides on --model
     tool_args = []
     roles = []
     if model:
         # best effort at launch; verified (and fixed) after the agent is up
-        tool_args += (["-m", model] if tool == "kimi" else ["--model", model])
+        if tool == "kimi":
+            tool_args += ["-m", model]
+        else:
+            tool_args += ["--model", model]
     if readonly and auto_mode:
         die("--readonly and --auto contradict each other — pick one")
     if readonly:
         # ENFORCED by the tool's own permission system, not prompt text
-        tool_args += ["--plan"] if tool == "kimi" else ["--permission-mode", "plan"]
-        roles.append("readonly (enforced: " + ("kimi --plan" if tool == "kimi"
-                     else "claude --permission-mode plan") + ")")
+        if tool == "kimi":
+            tool_args += ["--plan"]
+            roles.append("readonly (enforced: kimi --plan)")
+        elif tool == "cursor":
+            tool_args += ["--plan"]
+            roles.append("readonly (enforced: cursor --plan)")
+        else:
+            tool_args += ["--permission-mode", "plan"]
+            roles.append("readonly (enforced: claude --permission-mode plan)")
     if auto_mode:
-        tool_args += ["--auto"] if tool == "kimi" else ["--permission-mode", "auto"]
-        roles.append("auto mode (no per-command approval prompts; verified on footer)")
+        if tool == "kimi":
+            tool_args += ["--auto"]
+        elif tool == "cursor":
+            tool_args += ["--force"]
+        else:
+            tool_args += ["--permission-mode", "auto"]
+        roles.append("auto mode (no per-command approval prompts"
+                     + ("" if tool == "cursor" else "; verified on footer") + ")")
+    if auto_trust and tool == "cursor":
+        tool_args += ["--trust"]
+        roles.append("trust workspace (cursor --trust)")
     if budget:
         if tool == "claude":
             tool_args += ["--max-budget-usd", str(budget)]
             roles.append(f"budget ${budget} (enforced: --max-budget-usd)")
         else:
-            roles.append(f"budget ${budget} ⚠ kimi has no spend cap — recorded only")
+            roles.append(f"budget ${budget} ⚠ {tool} has no spend cap — recorded only")
     if not can_deploy and not readonly and tool == "claude":
         tool_args += ["--disallowedTools", *DEPLOY_DENY]
         roles.append(f"no-deploy (enforced: {len(DEPLOY_DENY)} denied Bash patterns; "
                      f"lift with --can-deploy)")
     elif can_deploy:
         roles.append("can-deploy (deny-list lifted)")
+
+    prompt_at_launch = tool == "cursor" and bool(prompt)
+    if prompt_at_launch:
+        tool_args.append(prompt)
 
     if dry:
         print(f"would spawn: {tool} in {wdir}" + (f" [tag {tag}]" if tag else ""))
@@ -280,11 +328,15 @@ def main():
         print(f"  launch args: {tool_args or '(none)'}")
         for r in roles:
             print(f"  role: {r}")
-        if model:
+        if model and tool == "cursor":
+            print(f"  model at launch: {model}")
+        elif model:
             print(f"  then verify model = {model} (fix via /model + screen check)")
-        if effort:
+        if effort and tool != "cursor":
             print(f"  then verify effort = {effort} (fix via /effort + screen check)")
-        if prompt:
+        if prompt and prompt_at_launch:
+            print(f"  prompt at launch ({len(prompt)} chars)")
+        elif prompt:
             print(f"  then inject prompt ({len(prompt)} chars, transcript-confirmed)")
         return
 
@@ -302,7 +354,7 @@ def main():
 
     print(f"spawning {tool} in {wdir}…")
     try:
-        name = launch(tool, wdir, tag=tag, tool_args=tool_args)
+        name = launch(HCOM_TOOL[tool], wdir, tag=tag, tool_args=tool_args)
         print(f"  agent: {name}")
         for r in roles:
             print(f"  {r}")
@@ -319,14 +371,21 @@ def main():
                 applied.append(f"model={model} ✓verified")
             else:
                 applied.append(f"model={model} ⚠ UNVERIFIED — check the pane (tess agents)")
-        elif model:  # kimi: -m at launch; the footer shows the display name
+        elif model and tool == "kimi":  # -m at launch; footer shows the display name
             from tess_agents import wait_ready
             wait_ready(name, timeout=90, auto_trust=auto_trust)
             needle = kimi_display_name(model) or model.split("/")[-1]
             ok = needle.lower() in kimi_footer(name) or kimi_set_model(name, model)
             applied.append(f"model={model} ({needle}) " +
                            ("✓verified" if ok else f"⚠ UNVERIFIED — check the pane (tess agents)"))
-        if auto_mode:
+        elif model and tool == "cursor":
+            from tess_agents import wait_ready
+            wait_ready(name, timeout=90, auto_trust=auto_trust)
+            needle = model.split("[")[0].split("/")[-1]
+            ok = needle.lower() in screen_text(term_state(name)).lower()
+            applied.append(f"model={model} " +
+                           ("✓verified" if ok else "✓launch (--model on CLI; check pane if unsure)"))
+        if auto_mode and tool != "cursor":
             # proof, not hope: the running agent's footer must say auto mode
             from tess_agents import wait_ready
             wait_ready(name, timeout=90, auto_trust=auto_trust)
@@ -334,13 +393,15 @@ def main():
                 applied.append("auto mode ✓verified (footer)")
             else:
                 applied.append(f"auto mode ⚠ UNVERIFIED — check the pane (tess agents)")
+        elif auto_mode and tool == "cursor":
+            applied.append("auto mode ✓launch (--force)")
         if effort and tool == "claude":
             inject(name, f"/effort {effort}", raw=True, expect=None, **inject_kw)
             if screen_has(name, effort):
                 applied.append(f"effort={effort} ✓verified")
             else:
                 applied.append(f"effort={effort} ⚠ UNVERIFIED — check the pane (tess agents)")
-        elif effort:
+        elif effort and tool == "kimi":
             # kimi's effort control is its thinking toggle, shown in the footer
             from tess_agents import wait_ready
             wait_ready(name, timeout=90, auto_trust=auto_trust)
@@ -353,8 +414,10 @@ def main():
                                f"model can't switch — pick a different kimi model if this matters")
         for a in applied:
             print(f"  {a}")
-        if prompt:
+        if prompt and not prompt_at_launch:
             print("  " + inject(name, prompt, **inject_kw))
+        elif prompt_at_launch:
+            print(f"  prompt at launch ({len(prompt)} chars)")
         print(f"✓ {name} ready in {wdir}")
         print(f"  follow along: tess report {name} · tess agents · tess tell {name} -- <msg>")
     except AgentError as e:

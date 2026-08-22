@@ -106,6 +106,11 @@ case "${1:-list}" in
     ;;
   find)  shift; _find "${1:?usage: find <name>}" ;;
 
+  ranked)  # name<TAB>path lines, most-used first — for tess new's repo picker
+    _fresh
+    awk -F'\t' '{print $1"\t"$2}' "$CACHE"
+    ;;
+
   pick)  # ONE best match. exit 0 = confident single answer on stdout (name\tpath).
          # exit 3 = ambiguous: candidates on stdout, caller chooses. exit 1 = none.
     shift; q="${1:?usage: pick <name>}"
@@ -131,5 +136,5 @@ case "${1:-list}" in
     printf '%s\n' "${hits[@]}" | cut -f1,2; exit 3
     ;;
 
-  *) echo "usage: $0 [index|list|find <name>|pick <name>]" >&2; exit 1 ;;
+  *) echo "usage: $0 [index|list|find <name>|ranked|pick <name>]" >&2; exit 1 ;;
 esac

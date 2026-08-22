@@ -4,7 +4,7 @@
 # effort and role template. Spec:
 #
 #   defaults:                  # optional, applied to every agent
-#     tool: claude             # claude | kimi
+#     tool: claude             # claude | kimi | cursor
 #     model: fable5
 #     effort: high
 #     template: implement      # templates/<name>.md (user dir wins)
@@ -82,7 +82,7 @@ def main():
             die(f"agents[{i}] must be a mapping")
         cfg = {**defaults, **a}
         tool = cfg.get("tool", "claude")
-        if tool not in ("claude", "kimi"):
+        if tool not in ("claude", "kimi", "cursor"):
             die(f"agents[{i}]: unknown tool '{tool}'")
         feat = cfg.get("feature") or cfg.get("feat") or "."
         prompt = (cfg.get("prompt") or "").strip()
@@ -94,9 +94,13 @@ def main():
         for _ in range(count):
             cmd = ["python3", os.path.join(LIBEXEC, "fleet", "spawn.py"), tool, str(feat), full]
             for k, flag in (("model", "--model"), ("effort", "--effort"),
-                            ("tag", "--tag"), ("budget", "--budget")):
+                            ("context", "--context"), ("tag", "--tag"), ("budget", "--budget")):
                 if cfg.get(k):
                     cmd += [flag, str(cfg[k])]
+            if cfg.get("fast") is True or str(cfg.get("fast", "")).lower() in ("1", "true", "yes"):
+                cmd.append("--fast")
+            elif cfg.get("fast") is False or str(cfg.get("fast", "")).lower() in ("0", "false", "no"):
+                cmd.append("--no-fast")
             if cfg.get("readonly"):
                 cmd.append("--readonly")
             if cfg.get("auto"):

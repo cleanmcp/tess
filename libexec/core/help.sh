@@ -8,9 +8,9 @@ h() { printf "%s%s%s\n" "$C" "$1" "$R"; shift; for l in "$@"; do printf "  %s\n"
 case "$c" in
   new|worktree) h "tess new [<repo>] <feature> [--repo a,b] [--fleet|--all] [--base <branch>]" \
     "Create feature worktrees (+ .env files copied in; opens in cmux if installed). Deterministic grammar:" \
-    "  tess new <feature>         -> the repo you're standing in (fleet repo / outside a repo -> your TESS_REPOS)" \
+    "  tess new <feature>         -> pick a repo (interactive) or the repo you're in; --fleet for TESS_REPOS" \
     "  tess new <repo> <feature>  -> that repo by NAME (see tess repos) — an unknown repo is an ERROR, never reinterpreted" \
-    "  --repo a,b explicit set · --fleet/--all force the configured set · --base <branch> cut from a branch (default ${TESS_MAIN_BRANCH:-main})" \
+    "  --repo a,b explicit set · --fleet/--all use TESS_REPOS / TESS_REPOS_ALL from ~/.config/tess/config (opt-in, never hardcoded)" \
     "Several copies of a repo name? The one you actually use wins (zoxide + git activity; a genuine tie shows a picker)." \
     "Single-repo features have no folder shell: tess path <feature> (and spawned agents) land INSIDE the repo." \
     "${D}e.g. tess new redis-cache · tess new lokus fix-toolbar · tess new hotfix-login --base develop${R}" ;;
@@ -45,8 +45,18 @@ case "$c" in
     "--tag T groups names (default: feat) · --no-auto-trust · --dry-run shows the plan." \
     "${D}e.g. tess kimi redis-cache \"profile the cache layer\" --model kimi-k2 --effort high${R}" \
     "${D}     tess claude . \"fix the failing test\" --model fable5${R}" ;;
+  cursor) h "tess cursor [feat|.] [\"prompt\"] [--model M] [--context 272k|1m] [--effort none|low|medium|high|xhigh|max] [--fast|--no-fast]" \
+    "Launch Cursor Agent (the \`agent\` CLI via hcom). Model customizations match the Cursor UI:" \
+    "  --model slug (composer-2.5, gpt-5.6-sol, claude-opus-5-thinking-max, …)" \
+    "  --context 272k|1m   Context window" \
+    "  --effort none|low|medium|high|xhigh|max   Reasoning depth" \
+    "  --fast / --no-fast   Fast mode toggle" \
+    "These compose into one --model string: slug[context=1m,reasoning=max,fast=false] (--effort → reasoning=)." \
+    "--readonly (--plan) · --auto (--force) · --trust (default on feature spawns) · --dry-run." \
+    "${D}e.g. tess cursor mail-fix \"clean inbox\" --model gpt-5.6-sol --context 1m --effort max${R}" \
+    "${D}     tess cursor . --model composer-2.5 --fast${R}" ;;
   resume|r)  h "tess resume [--plain] [--refresh]" \
-    "Pick from ALL past Claude/Kimi sessions (any folder) and resume in the session's own folder (recreated if deleted — sessions are keyed to it)." \
+    "Pick from ALL past Claude/Kimi/Cursor sessions (any folder) and resume in the session's own folder (recreated if deleted — sessions are keyed to it)." \
     "Each row gets a one-line AI summary of what the session worked on (local model, cached — instant after first run)." \
     "--plain = raw titles, no AI · --refresh = regenerate summaries · ✗dir marks sessions whose folder is gone." ;;
   think|partner) h "tess think" "Thinking-partner mode: loads your company context, sounding-board (not idea-firehose), researches in the background." ;;
