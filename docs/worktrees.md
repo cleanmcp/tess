@@ -7,10 +7,11 @@ Sessions ride on git worktrees. You can also drive them directly for multi-repo 
 ## Create
 
 ```bash
-tess new <feature>              the repo you're standing in
+tess new <feature>              pick a repo (interactive) or the repo you're in
 tess new <repo> <feature>       any repo on disk, by name
 tess new <feature> --repo a,b   an explicit set
-tess new <feature> --fleet      your configured set     --all  + optional repos
+tess new <feature> --fleet      your configured TESS_REPOS (opt-in — set in ~/.config/tess/config)
+tess new <feature> --all        TESS_REPOS_ALL if configured (same config file — not hardcoded)
 tess new <feature> --base dev   cut from a branch other than main
 ```
 

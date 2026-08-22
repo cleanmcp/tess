@@ -5,7 +5,7 @@
 # into its new worktree, since `git worktree` never carries untracked files.
 #
 # Usage:
-#   worktree.sh <feature>                    # repo you're in; fleet repo/outside -> your TESS_REPOS
+#   worktree.sh <feature>                    # pick a repo (TTY) or the repo you're in
 #   worktree.sh <repo> <feature>             # ONE repo by name (see: tess repos). Unknown repo = error.
 #   worktree.sh --repo <name|path>[,...] <feature>   # explicit repo(s)
 #   worktree.sh --fleet|--all <feature>      # force the configured set (TESS_REPOS / TESS_REPOS_ALL)
@@ -129,7 +129,15 @@ done
 # positionals: 1 = <feature> · 2 = <repo> <feature>. Never anything else.
 FEATURE=""
 case "${#_pos[@]}" in
-  0) c_red "usage: $0 [--repo <name>|--fleet|--all] [--base <branch>] [<repo>] <feature>"; exit 1 ;;
+  0)
+    if [ -t 0 ] && [ -t 1 ]; then
+      printf "feature name: "
+      read -r FEATURE
+      [ -z "${FEATURE:-}" ] && { c_yellow "cancelled."; exit 0; }
+    else
+      c_red "usage: $0 [--repo <name>|--fleet|--all] [--base <branch>] [<repo>] <feature>"; exit 1
+    fi
+    ;;
   1) FEATURE="${_pos[0]}" ;;
   2) if [ -n "$REPO_PICK" ]; then c_red "give the repo either positionally or via --repo, not both"; exit 2; fi
      REPO_PICK="${_pos[0]}"; FEATURE="${_pos[1]}" ;;
@@ -164,8 +172,7 @@ resolve_repo() {
 
 # Pick target repos, in order of explicitness:
 #   --repo / positional repo  >  --fleet/--all  >  the repo you're standing in
-#   (a fleet member still fans out the whole fleet — paired branches across the
-#   fleet is the point)  >  the configured fleet  >  a clear error.
+#   >  interactive picker (TTY)  >  error (non-TTY — pass --repo or --fleet)
 TARGETS=()   # "name<TAB>src" pairs
 _fleet_targets() {
   if [ "${#REPOS[@]}" -eq 0 ] || [ -z "${REPOS[0]:-}" ]; then
@@ -173,6 +180,40 @@ _fleet_targets() {
     exit 1
   fi
   for r in "${REPOS[@]}"; do TARGETS+=("$r"$'\t'"$CORE_DIR/$r"); done
+}
+
+_interactive_pick_targets() {
+  local lines sel n pick i line name path
+  local -a rows=()
+  lines="$(bash "$SCRIPT_DIR/repos.sh" ranked 2>/dev/null)" || true
+  if [ -z "$lines" ]; then
+    c_red "no repos indexed — run: tess repos index"
+    c_red "(or pass a repo: tess new <repo> $FEATURE · tess new --repo <name> $FEATURE)"
+    exit 1
+  fi
+  if command -v fzf >/dev/null 2>&1; then
+    c_blue "Pick repo(s) for '$FEATURE'  (Tab = multi · tess new --fleet = your configured set)"
+    sel="$(printf '%s\n' "$lines" | fzf --multi --prompt 'repo ▸ ' --delimiter $'\t' \
+      --with-nth=1 --preview 'echo {2}' --header 'Enter = one repo · Tab = several · Esc = cancel')" || true
+    [ -z "${sel:-}" ] && { c_yellow "cancelled."; exit 0; }
+    while IFS= read -r line; do
+      [ -n "$line" ] && TARGETS+=("$line")
+    done <<< "$sel"
+    return 0
+  fi
+  while IFS= read -r line; do [ -n "$line" ] && rows+=("$line"); done <<< "$lines"
+  n="${#rows[@]}"
+  c_blue "Pick a repo for '$FEATURE':"
+  for i in "${!rows[@]}"; do
+    name="${rows[$i]%%$'\t'*}"
+    path="${rows[$i]#*$'\t'}"
+    printf '  %2d) %s  %s\n' "$((i + 1))" "$name" "$path"
+  done
+  printf "pick # (Enter to cancel): "
+  read -r pick
+  case "$pick" in ''|*[!0-9]*) c_yellow "cancelled."; exit 0 ;; esac
+  [ "$pick" -lt 1 ] || [ "$pick" -gt "$n" ] && { c_red "invalid pick"; exit 2; }
+  TARGETS+=("${rows[$((pick - 1))]}")
 }
 if [ -n "$REPO_PICK" ]; then
   IFS=',' read -r -a _picks <<< "$REPO_PICK"
@@ -188,22 +229,24 @@ elif [ "$FORCE_FLEET" -eq 1 ]; then
   _fleet_targets
 elif cwd_top="$(git rev-parse --show-toplevel 2>/dev/null)" && [ -n "$cwd_top" ]; then
   cwd_name="$(basename "$cwd_top")"
-  in_fleet=0
-  for r in ${REPOS[@]+"${REPOS[@]}"}; do [ "$r" = "$cwd_name" ] && in_fleet=1; done
-  if [ "$in_fleet" -eq 1 ]; then
-    _fleet_targets
-  else
-    c_blue "(inside '$cwd_name' — targeting this repo; use --fleet for your configured set)"
-    TARGETS+=("$cwd_name"$'\t'"$cwd_top")
-  fi
+  c_blue "(inside '$cwd_name' — targeting this repo; tess new --fleet for your configured set)"
+  TARGETS+=("$cwd_name"$'\t'"$cwd_top")
+elif [ -t 0 ] && [ -t 1 ]; then
+  _interactive_pick_targets
 else
-  _fleet_targets
+  c_red "pass a repo: tess new <repo> $FEATURE · tess new --repo <name> $FEATURE"
+  c_red "(or tess new --fleet $FEATURE if you configured TESS_REPOS in ~/.config/tess/config)"
+  exit 1
 fi
+
+CONFIG_SRC="defaults"
+[ -f "$HOME/.config/tess/config" ] && CONFIG_SRC="~/.config/tess/config"
 
 DEST_ROOT="$WORKTREE_PARENT/$FEATURE"
 mkdir -p "$DEST_ROOT"
 
 c_blue "Creating worktrees for feature '$FEATURE'  ->  $DEST_ROOT"
+c_yellow "  ($CONFIG_SRC: TESS_WORKTREE_ROOT=${WORKTREE_PARENT})"
 echo
 
 CREATED=()   # repo names that now have a live worktree
