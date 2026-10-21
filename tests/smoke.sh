@@ -86,8 +86,17 @@ t "...error names the configured peers" \
 t_not "no-peer send errors instead of guessing" env TESS_PEERS="" "$TESS" handoff mini
 t "--session with an unknown id errors, no traceback" \
   bash -c "env TESS_PEERS='mini=nowhere.invalid' bash '$TESS' handoff mini --session zzzz 2>&1 | grep -qv Traceback"
+# a machine with NO sessions must say so, not tell you to name one
+t "--pick with no sessions says so" \
+  bash -c "env HOME='$TMP/nosess' TESS_PEERS='mini=nowhere.invalid' bash '$TESS' handoff mini --pick </dev/null 2>&1 | grep -q 'no sessions'"
+# ...and with one recorded, a non-tty run names --session and the id (hermetic HOME)
+mkdir -p "$TMP/sesshome/.claude/projects/-tmp-demo"
+printf '{"type":"user","cwd":"/tmp/demo","message":{"content":"demo prompt"}}\n' \
+  > "$TMP/sesshome/.claude/projects/-tmp-demo/aaaaaaaa-1111-2222-3333-444444444444.jsonl"
 t "--pick without a tty tells you to name one" \
-  bash -c "env TESS_PEERS='mini=nowhere.invalid' bash '$TESS' handoff mini --pick </dev/null 2>&1 | grep -q -- '--session'"
+  bash -c "env HOME='$TMP/sesshome' TESS_PEERS='mini=nowhere.invalid' bash '$TESS' handoff mini --pick </dev/null 2>&1 | grep -q -- '--session'"
+t "...and lists the session id to use" \
+  bash -c "env HOME='$TMP/sesshome' TESS_PEERS='mini=nowhere.invalid' bash '$TESS' handoff mini --pick </dev/null 2>&1 | grep -q aaaaaaaa-1111"
 before_wt="$(ls "$TMP/wtroot" | wc -l)"
 t "handoff created nothing"      test "$(ls "$TMP/wtroot" | wc -l)" = "$before_wt"
 

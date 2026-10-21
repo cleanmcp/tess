@@ -258,14 +258,20 @@ def session_for_cwd(cwd):
 
 
 def pick(sessions, prompt):
-    """Interactive chooser. Never prompts when stdin isn't a TTY (agent-safe)."""
+    """Interactive chooser. Never prompts when stdin isn't a TTY (agent-safe).
+
+    The no-TTY branch comes first so an agent is told how to name a session
+    whether or not this machine happens to have any.
+    """
     sessions = [STORE.describe(s) for s in sessions[:20]]
-    if not sessions:
-        die("no sessions found on this machine")
     if not sys.stdin.isatty():
+        if not sessions:
+            die("no sessions found on this machine, so there is nothing to hand off.")
         lines = "\n".join(f"    {s['sid']}  {s['label']}" for s in sessions[:10])
         die("not a terminal, so there's nothing to pick with. Name one:\n"
             f"  --session <id>\n\n{lines}")
+    if not sessions:
+        die("no sessions found on this machine")
     print(f"\n{C.bold}{prompt}{C.r}\n")
     for i, s in enumerate(sessions, 1):
         where = (s["cwd"] or "?").replace(HOME, "~")
