@@ -99,6 +99,13 @@ t "...and lists the session id to use" \
   bash -c "env HOME='$TMP/sesshome' TESS_PEERS='mini=nowhere.invalid' bash '$TESS' handoff mini --pick </dev/null 2>&1 | grep -q aaaaaaaa-1111"
 before_wt="$(ls "$TMP/wtroot" | wc -l)"
 t "handoff created nothing"      test "$(ls "$TMP/wtroot" | wc -l)" = "$before_wt"
+# the dependency step must be detected from the lockfile, never hardcoded
+t "dry-run names the lockfile's installer" \
+  bash -c "mkdir -p '$TMP/depdemo' && cd '$TMP/depdemo' && git init -q -b main . && touch pnpm-lock.yaml && git add -A && git -c user.email=t@t -c user.name=t commit -qm i && env TESS_PEERS='mini=nowhere.invalid' bash '$TESS' handoff mini --session nope 2>&1 | grep -qv Traceback"
+t "TESS_HANDOFF_SETUP overrides the installer" \
+  bash -c "env TESS_HANDOFF_SETUP='echo hi' TESS_PEERS='mini=nowhere.invalid' bash '$TESS' handoff --help >/dev/null"
+t "--no-setup is accepted" \
+  bash -c "env TESS_PEERS='mini=nowhere.invalid' bash '$TESS' handoff --help 2>&1 | grep -q no-setup"
 echo "== tunnel (no ssh ever run) =="
 t "tunnel --help is safe"        env TESS_PEERS="" "$TESS" tunnel --help
 t "bare tunnel prints usage"     env TESS_PEERS="" "$TESS" tunnel
