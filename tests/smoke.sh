@@ -99,6 +99,20 @@ t "...and lists the session id to use" \
   bash -c "env HOME='$TMP/sesshome' TESS_PEERS='mini=nowhere.invalid' bash '$TESS' handoff mini --pick </dev/null 2>&1 | grep -q aaaaaaaa-1111"
 before_wt="$(ls "$TMP/wtroot" | wc -l)"
 t "handoff created nothing"      test "$(ls "$TMP/wtroot" | wc -l)" = "$before_wt"
+echo "== tunnel (no ssh ever run) =="
+t "tunnel --help is safe"        env TESS_PEERS="" "$TESS" tunnel --help
+t "bare tunnel prints usage"     env TESS_PEERS="" "$TESS" tunnel
+t "--list works with no state"   env TESS_STATE="$TMP/state" "$TESS" tunnel --list
+t_not "no peers configured errors"   env TESS_PEERS="" "$TESS" tunnel mini 3000
+t "...and names TESS_PEERS" \
+  bash -c "env TESS_PEERS='' bash '$TESS' tunnel mini 3000 2>&1 | grep -q TESS_PEERS"
+t_not "unknown peer errors"      env TESS_PEERS="mini=nowhere.invalid" "$TESS" tunnel bogus 3000
+t_not "a port with no peer errors" env TESS_PEERS="mini=nowhere.invalid" "$TESS" tunnel mini
+t "...and suggests --login" \
+  bash -c "env TESS_PEERS='mini=nowhere.invalid' bash '$TESS' tunnel mini 2>&1 | grep -q -- '--login'"
+t_not "a non-numeric port errors"  env TESS_PEERS="mini=nowhere.invalid" "$TESS" tunnel mini http
+t_not "an out-of-range port errors" env TESS_PEERS="mini=nowhere.invalid" "$TESS" tunnel mini 99999
+t_not "a three-part port spec errors" env TESS_PEERS="mini=nowhere.invalid" "$TESS" tunnel mini 1:2:3
 
 echo "== todos (TESS_STATE override) =="
 "$TESS" todo add -p smoke "temp item" >/dev/null 2>&1
