@@ -82,6 +82,35 @@ tess spend                                  budget ledger
 
 Uncommitted changes block a repo from shipping. `tess done` only touches agents working inside that feature's directory.
 
+## Reach another machine's localhost
+
+```bash
+tess tunnel mini 3000            its :3000 becomes http://localhost:3000 here
+tess tunnel mini 3000 5173       several at once
+tess tunnel mini 3900:3000       different local port, when 3000 is taken here
+tess tunnel mini --login         the ports a CLI sign-in redirects to
+tess tunnel mini --bg 3000       detach · --list shows them · --stop closes them
+```
+
+Peers come from the same setting handoff uses:
+
+```bash
+TESS_PEERS="mini=mac-mini  box=dev@10.0.0.5"     # ~/.config/tess/config
+```
+
+**Seeing what an agent built.** A dev server binds `127.0.0.1`, so nothing off that machine
+can reach it — and changing the bind address would put it on the network. Forwarding the port
+keeps it private and makes it arrive as plain `localhost`, which is also the origin that
+cookies, CORS rules and OAuth redirect allow-lists already expect.
+
+**Signing in on a machine with no screen.** A CLI sign-in opens a browser and waits for a
+redirect to `127.0.0.1:<port>` on the machine that started it. Over ssh the browser is here and
+the listener is there, so the redirect lands on the wrong computer and the sign-in hangs.
+Forward the port first and this machine's localhost *is* that listener. `--login` covers the
+ports the common agent CLIs use; one that prints its own port needs `tess tunnel <peer> <that>`.
+
+The forward is plain `ssh -L` — nothing listens on an external interface.
+
 ## Reporting back, as an agent
 
 The human is `@bigboss`:

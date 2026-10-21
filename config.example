@@ -25,6 +25,12 @@ TESS_CORE="$TESS_WORKTREE_ROOT/repos"        # your source repos live here (one 
 # TESS_MAIL_FROM="you@work.com"              # default From account for `tess mail send` (else: most-mail account)
 # TESS_DEPLOY_DENY="Bash(gcloud run deploy:*),Bash(terraform apply:*)"  # override the deploy deny-list
 
+# ── Peer machines (optional; for tess tunnel) ──
+# Other machines you work across: "<name>=<ssh target> …", space-separated. The target is
+# anything ssh accepts — a Host alias from ~/.ssh/config, user@host, or host — reachable with
+# key-based auth (a password prompt would hang).
+# TESS_PEERS="mini=mac-mini  box=dev@10.0.0.5"
+
 # ── Notes vault (OPTIONAL — the personal "brain" features) ──
 # Any markdown folder works (Obsidian / Lokus / plain files). Leave unset to skip entirely.
 # TESS_VAULT="$HOME/Documents/notes"          # your notes live here
