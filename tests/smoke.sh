@@ -75,6 +75,19 @@ t "...created nothing"          test "$(ls "$TMP/wtroot" | wc -l)" = "$before"
 t "spawn --dry-run exits 0"     "$TESS" claude feat1 "smoke" --dry-run
 t "resume --plain lists non-tty" "$TESS" resume --plain
 
+echo "== new --on <peer> (no ssh ever run) =="
+t "--on with --help is safe"      env TESS_PEERS="" "$TESS" new --on mini --help
+t_not "--on with no peers errors"  env TESS_PEERS="" "$TESS" new --on mini feat
+t "...and names TESS_PEERS" \
+  bash -c "env TESS_PEERS='' bash '$TESS' new --on mini feat 2>&1 | grep -q TESS_PEERS"
+t_not "--on with an unknown peer errors" env TESS_PEERS="mini=nowhere.invalid" "$TESS" new --on bogus feat
+t "...error names the configured peers" \
+  bash -c "env TESS_PEERS='mini=nowhere.invalid' bash '$TESS' new --on bogus feat 2>&1 | grep -q mini"
+t_not "--on with no feature errors"  env TESS_PEERS="mini=nowhere.invalid" "$TESS" new --on mini
+t_not "--on with three positionals errors" env TESS_PEERS="mini=nowhere.invalid" "$TESS" new --on mini a b c
+t "--on created nothing locally"  test ! -e "$TMP/wtroot/feat"
+t "plain tess new still works (no --on)"  test -e "$TMP/wtroot/feat1/repo-a/.git"
+
 echo "== handoff (no peer ever contacted) =="
 t "handoff --help is safe"       env TESS_PEERS="" "$TESS" handoff --help
 t "bare handoff runs with no peers configured" env TESS_PEERS="" "$TESS" handoff

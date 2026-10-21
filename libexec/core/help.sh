@@ -59,6 +59,11 @@ case "$c" in
     "Pick from ALL past Claude/Kimi/Cursor sessions (any folder) and resume in the session's own folder (recreated if deleted — sessions are keyed to it)." \
     "Each row gets a one-line AI summary of what the session worked on (local model, cached — instant after first run)." \
     "--plain = raw titles, no AI · --refresh = regenerate summaries · ✗dir marks sessions whose folder is gone." ;;
+  new)       h "tess new [<repo>] <feature> [--base <branch>] [--on <peer>] [--repo a,b] [--fleet|--all]" \
+    "Cut an isolated worktree per repo, with .env files copied in. The feature is the LAST positional; an unknown repo is an error, never reinterpreted." \
+    "--on <peer> cuts it on another machine instead, using that machine's own tess, then installs dependencies there so it is runnable on arrival." \
+    "Feature names are flat (letters, digits, . _ -): a branch-style name like fix/thing is not a feature name." \
+    "Peers: TESS_PEERS=\"mini=<ssh target>\" in ~/.config/tess/config. See also: tess handoff (move a running session) and tess tunnel (reach its localhost)." ;;
   handoff)   h "tess handoff [<peer>|back] [--pick] [--session <id>] [--dry-run]" \
     "Move a live session — context, folder, and uncommitted work — to another machine, and bring it back." \
     "A baton, not a mirror: one machine holds a session at a time, so there is never anything to merge." \
