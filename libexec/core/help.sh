@@ -59,6 +59,11 @@ case "$c" in
     "Pick from ALL past Claude/Kimi/Cursor sessions (any folder) and resume in the session's own folder (recreated if deleted — sessions are keyed to it)." \
     "Each row gets a one-line AI summary of what the session worked on (local model, cached — instant after first run)." \
     "--plain = raw titles, no AI · --refresh = regenerate summaries · ✗dir marks sessions whose folder is gone." ;;
+  tunnel)    h "tess tunnel <peer> <port>… [--login] [--bg] · --list · --stop" \
+    "Forward a peer's localhost to this machine: its 127.0.0.1:<port> shows up as your localhost:<port>." \
+    "Use it to open a dev server an agent started on another machine, without binding that server to the network." \
+    "--login forwards the ports agent CLI sign-ins redirect to, so a sign-in started over ssh can finish in the browser here." \
+    "<local>:<remote> picks a different local port · --bg detaches (--list shows them, --stop closes them)." ;;
   think|partner) h "tess think" "Thinking-partner mode: loads your company context, sounding-board (not idea-firehose), researches in the background." ;;
   post|brand|write) h "tess post" "Daily content partner for your personal brand. Learns your taste each session." ;;
   local|offline|small|big|med|medium) h "tess local | small | big [prompt]" \
