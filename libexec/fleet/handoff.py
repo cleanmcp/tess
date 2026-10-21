@@ -226,17 +226,24 @@ def ago(ts):
 
 
 def session_for_cwd(cwd):
-    """Newest session recorded in this folder, or the nearest ancestor of it."""
+    """Newest session recorded in this folder, or in the nearest ancestor of it.
+
+    The walk stops *below* $HOME on purpose: a session recorded in the home
+    directory itself is not "this project's session", and handing off $HOME
+    would try to move everything.
+    """
     alls = STORE.sessions()
+    home = os.path.realpath(HOME)
     probe = os.path.realpath(cwd)
-    while True:
+    while probe != home and probe.startswith(home + os.sep):
         hit = [s for s in alls if s["proj"] == STORE.slug(probe)]
         if hit:
             return STORE.describe(hit[0])
         parent = os.path.dirname(probe)
-        if parent == probe or len(probe) <= len(HOME):
-            return None
+        if parent == probe:
+            break
         probe = parent
+    return None
 
 
 def pick(sessions, prompt):
@@ -294,31 +301,54 @@ def git_context(cwd):
             "repo": os.path.basename(central), "feature": feature}
 
 
+def remote_tess(target):
+    """Find tess on a peer. A non-interactive ssh shell doesn't read ~/.zshrc or
+    ~/.bashrc, so PATH there is minimal — look where installers actually put it."""
+    probe = ('{ "$SHELL" -lc "command -v tess" 2>/dev/null; '
+             'command -v tess 2>/dev/null; '
+             'ls "$HOME/.local/bin/tess" 2>/dev/null; } | head -1')
+    found = ssh(target, probe, check=False)
+    return found.splitlines()[0].strip() if found else ""
+
+
 def wip_commit(top, remote=None):
-    """Park every uncommitted change in one commit. Returns True if it made one."""
+    """Park every uncommitted change in one commit.
+
+    Returns None if there was nothing to park, else a token recording whether
+    anything had been staged, so unwip can put the index back the way it was.
+    """
     if remote:
         target, path = remote
         if not ssh(target, f"git -C {q(path)} status --porcelain"):
-            return False
+            return None
+        staged = bool(ssh(target, f"git -C {q(path)} diff --cached --name-only"))
         ssh(target, f"git -C {q(path)} add -A && git -C {q(path)} "
                     f"-c user.name=tess -c user.email=tess@localhost "
                     f"commit --no-verify -q -m {q(WIP_MSG)}")
-        return True
+        return {"staged": staged}
     if not run(["git", "-C", top, "status", "--porcelain"]):
-        return False
+        return None
+    staged = bool(run(["git", "-C", top, "diff", "--cached", "--name-only"]))
     run(["git", "-C", top, "add", "-A"])
     run(["git", "-C", top, "-c", "user.name=tess", "-c", "user.email=tess@localhost",
          "commit", "--no-verify", "-q", "-m", WIP_MSG])
-    return True
+    return {"staged": staged}
 
 
-def unwip(top, remote=None):
+def unwip(top, token, remote=None):
     """Undo the WIP commit, leaving the working tree dirty exactly as it was."""
+    if not token:
+        return
+    # soft keeps the content; a second mixed reset restores an empty index
     if remote:
         target, path = remote
         ssh(target, f"git -C {q(path)} reset --soft HEAD~1")
+        if not token.get("staged"):
+            ssh(target, f"git -C {q(path)} reset -q")
     else:
         run(["git", "-C", top, "reset", "--soft", "HEAD~1"])
+        if not token.get("staged"):
+            run(["git", "-C", top, "reset", "-q"])
 
 
 # ---------------------------------------------------------------- markers
@@ -403,6 +433,9 @@ def send(name, target, sess, dry):
     cwd = sess.get("cwd")
     if not cwd or not os.path.isdir(cwd):
         die(f"that session's folder is gone ({cwd or 'unknown'}) — nothing to hand off")
+    if os.path.realpath(cwd) in (os.path.realpath(HOME), os.sep):
+        die(f"that session ran in {cwd} itself — too broad to move.\n"
+            f"  Hand off a project folder, not the whole home directory.")
     if os.path.exists(os.path.join(cwd, MARKER)):
         with open(os.path.join(cwd, MARKER)) as fh:
             held = json.load(fh)
@@ -444,7 +477,7 @@ def send(name, target, sess, dry):
                 run(["git", "-C", g["top"], "push", "-q", "--force",
                      f"{target}:{rcentral}", f"HEAD:{ref}"])
                 note(f"creating the worktree on {name} (tess new {g['repo']} {g['feature']})")
-                tess_remote = ssh(target, 'sh -lc "command -v tess"', check=False)
+                tess_remote = remote_tess(target)
                 if not tess_remote:
                     die(f"tess isn't installed on {name}, so the worktree can't be created.\n"
                         f"  Install it there, or run:  ssh {target} 'tess new {g['repo']} "
@@ -458,11 +491,9 @@ def send(name, target, sess, dry):
             # a new branch after the feature, which may not be this session's branch.
             ssh(target, f"git -C {q(rtop)} checkout -q -B {q(g['branch'])} {q(ref)} && "
                         f"git -C {q(rtop)} reset -q --hard {q(ref)}")
-            if had:
-                unwip(None, remote=(target, rtop))
+            unwip(None, had, remote=(target, rtop))
         finally:
-            if had:
-                unwip(g["top"])          # this side goes back to being dirty
+            unwip(g["top"], had)         # this side goes back to being dirty
 
         envs = [f for f in os.listdir(g["top"]) if f.startswith(".env")]
         if envs:
@@ -529,11 +560,9 @@ def take_back(name, target, dry, want_pick):
             note(f"fetching {g['branch']} back")
             run(["git", "-C", g["top"], "fetch", "-q", f"{target}:{rtop}", "HEAD"])
             run(["git", "-C", g["top"], "reset", "-q", "--hard", "FETCH_HEAD"])
-            if had:
-                unwip(g["top"])
+            unwip(g["top"], had)
         finally:
-            if had:
-                unwip(None, remote=(target, rtop))
+            unwip(None, had, remote=(target, rtop))
         rsync(f"{target}:{rtop}/", g["top"] + "/",
               extra=["--include", ".env*", "--exclude", "*", "--no-recursive"])
     else:
