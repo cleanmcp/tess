@@ -49,6 +49,11 @@ case "$c" in
     "Pick from ALL past Claude/Kimi sessions (any folder) and resume in the session's own folder (recreated if deleted — sessions are keyed to it)." \
     "Each row gets a one-line AI summary of what the session worked on (local model, cached — instant after first run)." \
     "--plain = raw titles, no AI · --refresh = regenerate summaries · ✗dir marks sessions whose folder is gone." ;;
+  handoff)   h "tess handoff [<peer>|back] [--pick] [--session <id>] [--dry-run]" \
+    "Move a live session — context, folder, and uncommitted work — to another machine, and bring it back." \
+    "A baton, not a mirror: one machine holds a session at a time, so there is never anything to merge." \
+    "Code travels as a throwaway WIP commit pushed over ssh (delta only, soft-reset on arrival); .env files rsync beside it; the transcript is rewritten for the peer's home directory." \
+    "Bare 'tess handoff' shows what is parked where. Peers: TESS_PEERS=\"mini=<ssh target>\" in ~/.config/tess/config." ;;
   think|partner) h "tess think" "Thinking-partner mode: loads your company context, sounding-board (not idea-firehose), researches in the background." ;;
   post|brand|write) h "tess post" "Daily content partner for your personal brand. Learns your taste each session." ;;
   local|offline|small|big|med|medium) h "tess local | small | big [prompt]" \

@@ -75,6 +75,22 @@ t "...created nothing"          test "$(ls "$TMP/wtroot" | wc -l)" = "$before"
 t "spawn --dry-run exits 0"     "$TESS" claude feat1 "smoke" --dry-run
 t "resume --plain lists non-tty" "$TESS" resume --plain
 
+echo "== handoff (no peer ever contacted) =="
+t "handoff --help is safe"       env TESS_PEERS="" "$TESS" handoff --help
+t "bare handoff runs with no peers configured" env TESS_PEERS="" "$TESS" handoff
+t "...and names TESS_PEERS as the fix" \
+  bash -c "env TESS_PEERS='' bash '$TESS' handoff | grep -q TESS_PEERS"
+t_not "unknown peer errors"      env TESS_PEERS="mini=nowhere.invalid" "$TESS" handoff bogus
+t "...error names the configured peers" \
+  bash -c "env TESS_PEERS='mini=nowhere.invalid' bash '$TESS' handoff bogus 2>&1 | grep -q mini"
+t_not "no-peer send errors instead of guessing" env TESS_PEERS="" "$TESS" handoff mini
+t "--session with an unknown id errors, no traceback" \
+  bash -c "env TESS_PEERS='mini=nowhere.invalid' bash '$TESS' handoff mini --session zzzz 2>&1 | grep -qv Traceback"
+t "--pick without a tty tells you to name one" \
+  bash -c "env TESS_PEERS='mini=nowhere.invalid' bash '$TESS' handoff mini --pick </dev/null 2>&1 | grep -q -- '--session'"
+before_wt="$(ls "$TMP/wtroot" | wc -l)"
+t "handoff created nothing"      test "$(ls "$TMP/wtroot" | wc -l)" = "$before_wt"
+
 echo "== todos (TESS_STATE override) =="
 "$TESS" todo add -p smoke "temp item" >/dev/null 2>&1
 id="$(sed -nE 's/^- \[ \] \(([0-9a-f]{3})\) temp item.*/\1/p' "$TMP/state/todos.md" | head -1)"

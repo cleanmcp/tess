@@ -82,6 +82,44 @@ tess spend                                  budget ledger
 
 Uncommitted changes block a repo from shipping. `tess done` only touches agents working inside that feature's directory.
 
+## Move a session to another machine
+
+```bash
+tess handoff                     what's parked where
+tess handoff mini                send this folder's newest session to the peer "mini"
+tess handoff mini --pick         choose any past session first
+tess handoff mini --dry-run      print the plan, touch nothing
+tess handoff back [mini]         take it back
+```
+
+Configure peers first — nothing is guessed:
+
+```bash
+TESS_PEERS="mini=mac-mini  box=dev@10.0.0.5"     # ~/.config/tess/config
+```
+
+Each target is anything `ssh` accepts (a Host alias, `user@host`, or `host`) reachable with
+key-based auth. Both machines need `tess`, `git` and `rsync`; the folder lands at the same
+path relative to `$HOME`.
+
+A session is three things, and each travels the way that suits it:
+
+| part | how it moves |
+|---|---|
+| code | one throwaway WIP commit, pushed over ssh to a neutral ref, soft-reset on arrival — git sends only the delta and the working tree lands byte-identical, uncommitted edits included |
+| env | `.env*` files rsynced beside it (gitignored, so no commit can carry them) |
+| context | the agent transcript, rsynced with every absolute path rewritten for the peer's `$HOME` |
+
+**It's a baton, not a mirror.** Exactly one machine holds a session at a time: the source is
+parked with a `.tess-handoff` marker, so the two sides can't diverge and there is no merge
+step. Handing off a folder that is already parked is an error, and the transcript is
+append-only with only the holder appending. Nothing is destructive — the WIP commit is
+soft-reset on both ends, so an interrupted handoff leaves the working tree as it was.
+
+If the peer has the repo but not the worktree, handoff creates it there with `tess new` and
+moves it onto the session's branch. A multi-repo feature root can't travel as one unit —
+hand off one repo at a time.
+
 ## Reporting back, as an agent
 
 The human is `@bigboss`:
