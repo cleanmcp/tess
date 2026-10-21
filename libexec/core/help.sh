@@ -59,6 +59,11 @@ case "$c" in
     "Pick from ALL past Claude/Kimi/Cursor sessions (any folder) and resume in the session's own folder (recreated if deleted — sessions are keyed to it)." \
     "Each row gets a one-line AI summary of what the session worked on (local model, cached — instant after first run)." \
     "--plain = raw titles, no AI · --refresh = regenerate summaries · ✗dir marks sessions whose folder is gone." ;;
+  handoff)   h "tess handoff [<peer>|back] [--pick] [--session <id>] [--dry-run]" \
+    "Move a live session — context, folder, and uncommitted work — to another machine, and bring it back." \
+    "A baton, not a mirror: one machine holds a session at a time, so there is never anything to merge." \
+    "Code travels as a throwaway WIP commit pushed over ssh (delta only, soft-reset on arrival); .env files rsync beside it; the transcript is rewritten for the peer's home directory." \
+    "Bare 'tess handoff' shows what is parked where. Peers: TESS_PEERS=\"mini=<ssh target>\" in ~/.config/tess/config." ;;
   tunnel)    h "tess tunnel <peer> <port>… [--login] [--bg] · --list · --stop" \
     "Forward a peer's localhost to this machine: its 127.0.0.1:<port> shows up as your localhost:<port>." \
     "Use it to open a dev server an agent started on another machine, without binding that server to the network." \

@@ -94,6 +94,7 @@ cat <<EOF
      ${C}tess claude${R}|${C}kimi${R}|${C}cursor${R} ${D}[feat] ["task"] [--model M --effort E --context C --fast]${R}
                                  spawn — worktree auto-created, settings VERIFIED, roles ENFORCED
      ${C}tess resume${R}                   resume ANY past Claude/Kimi/Cursor session (any folder)
+     ${C}tess handoff${R} ${D}<peer>|back${R}      move a live session (context + folder + uncommitted work) between machines
      ${C}tess tunnel${R} ${D}<peer> <port>${R}     reach a peer's localhost here ${D}(dev servers · CLI sign-ins)${R}
      ${C}tess think${R} · ${C}post${R}             thinking partner · content partner ${D}(both use your vault)${R}
      ${C}tess local${R} ${D}[prompt]${R}           offline AI via ollama ${D}(also ${C}tess small${R} / ${C}big${R})${R}
@@ -315,7 +316,7 @@ case "$cmd" in
 esac
 
 # words that can never be feature/agent names (subcommands + obvious traps)
-TESS_RESERVED="help menu version new repos ls list rm remove clean env branches path wt worktrees claude kimi cursor agents agent loop resume r tunnel local offline small big med medium think partner post write brand boss ask voice listen git lg fish matrix bonsai pipes dex doctor disk cheat fix-files fixfiles update wire commands custom open app launch apps login startup brief hub person company add log people companies reminders todo todos followups calendar cal messages msg chat thread send text calls mail email music read book readpos done inbox report digest status team orchestrate ship wait watch approve inject tell kill hcom diff spend all vault note notes kanban tasks base bases links canvas"
+TESS_RESERVED="help menu version new repos ls list rm remove clean env branches path wt worktrees claude kimi cursor agents agent loop resume r handoff tunnel local offline small big med medium think partner post write brand boss ask voice listen git lg fish matrix bonsai pipes dex doctor disk cheat fix-files fixfiles update wire commands custom open app launch apps login startup brief hub person company add log people companies reminders todo todos followups calendar cal messages msg chat thread send text calls mail email music read book readpos done inbox report digest status team orchestrate ship wait watch approve inject tell kill hcom diff spend all vault note notes kanban tasks base bases links canvas"
 export TESS_RESERVED
 _validpath() {  # _validpath <name> <what> — flag/path safety only, NO reserved check.
   # Used on paths that manage EXISTING features (rm/path/env/done/ship): a feature
@@ -517,6 +518,7 @@ case "$cmd" in
     ;;
   loop)     exec bash "$TESS_LIB/fleet/loop.sh" "$@" ;;
   resume|r) exec python3 "$TESS_LIB/fleet/resume.py" "$@" ;;
+  handoff)  exec python3 "$TESS_LIB/fleet/handoff.py" "$@" ;;   # move a session between machines
   tunnel)   exec python3 "$TESS_LIB/fleet/tunnel.py" "$@" ;;   # reach a peer's localhost
   local|offline)   # offline AI (no internet). `tess local [small|big] [prompt]`
     case "${1:-}" in
