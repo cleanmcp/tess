@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""tess resume [--plain] [--refresh] — list recent Claude + Kimi sessions (any
+"""tess resume [--plain] [--refresh] — list recent Claude + Kimi + Cursor sessions (any
 folder) with a one-line AI summary of what each was actually working on, pick
 one, and resume it in its original folder.
 
@@ -107,6 +107,22 @@ try:
 except OSError:
     pass  # kimi not installed / never used
 
+# Cursor: ~/.cursor/chats/<proj>/<chatId>/meta.json — title + cwd; resume via
+# `agent --resume <chatId>` (same id as the session folder name).
+for meta_path in glob.glob(f"{HOME}/.cursor/chats/*/*/meta.json"):
+    try:
+        meta = json.load(open(meta_path))
+    except Exception:
+        continue
+    sid = os.path.basename(os.path.dirname(meta_path))
+    cwd = meta.get("cwd")
+    title = meta.get("title") or "(untitled)"
+    mt = os.path.getmtime(meta_path)
+    ts = to_epoch(meta.get("updatedAtMs") or meta.get("createdAtMs"), mt)
+    detail = f"task: {title[:260]}" if title != "(untitled)" else ""
+    sessions.append({"ts": ts, "tool": "cursor", "cwd": cwd, "title": title,
+                     "detail": detail, "sid": sid, "mtime": mt})
+
 sessions.sort(key=lambda s: s["ts"], reverse=True)
 sessions = sessions[:LIMIT]
 if not sessions:
@@ -200,7 +216,7 @@ if not PLAIN and pending and (sys.stdin.isatty() or REFRESH) and ollama_up():
 # ---- render ----
 print(f"\n  {C.bold}{C.mag}recent sessions{C.r} {C.grey}(newest first · any folder){C.r}\n")
 for i, s in enumerate(sessions, 1):
-    tcol = C.yellow if s["tool"] == "kimi" else C.cyan
+    tcol = {"kimi": C.yellow, "cursor": C.mag}.get(s["tool"], C.cyan)
     fold = (s["cwd"] or "?").replace(HOME, "~")
     gone = f" {C.red}✗dir{C.r}" if s["cwd"] and not os.path.isdir(s["cwd"]) else ""
     line = s["summary"] or s["title"]
@@ -243,6 +259,13 @@ if s["tool"] == "claude":
         os.execvp("claude", ["claude", "--resume", s["sid"]])
     except FileNotFoundError:
         print("  claude CLI not found on PATH."); sys.exit(1)
+elif s["tool"] == "cursor":
+    print(f"  {C.grey}resuming cursor in {wd or os.getcwd()}…{C.r}")
+    try:
+        os.execvp("agent", ["agent", "--resume", s["sid"]])
+    except FileNotFoundError:
+        print("  cursor agent CLI not found on PATH (install: https://cursor.com/docs/agent/cli).")
+        sys.exit(1)
 else:
     print(f"  {C.grey}resuming kimi in {wd or os.getcwd()}…{C.r}")
     try:

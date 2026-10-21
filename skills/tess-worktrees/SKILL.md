@@ -16,8 +16,8 @@ it skips `.env` copying, the repo map, the agent orientation file, and the teard
 The grammar is deterministic. An unknown repo name is an error, never a guess.
 
 ```bash
-tess new <feature>                 # the repo you're standing in;
-                                   # outside any repo → the user's configured fleet set
+tess new <feature>                 # outside any repo → pick from indexed repos (fzf);
+                                   # inside a repo → that repo only; --fleet for TESS_REPOS
 tess new <repo> <feature>          # any repo on disk by name (tess maps them — see `tess repos`)
 tess new <feature> --repo a,b      # explicit repo list
 tess new <feature> --fleet         # the configured default set

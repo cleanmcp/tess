@@ -76,7 +76,7 @@ cat <<EOF
   ${D}every stream of work is an isolated session: spawn · watch · steer · ship${R}
 
   ${B}${G}🌳 WORKTREES${R} ${D}(the isolation layer — one worktree per session)${R}
-     ${C}tess new${R} ${D}<name>${R}               the repo you're in — or, outside a repo, your configured set
+     ${C}tess new${R} ${D}<name>${R}               pick a repo (or the one you're in) · ${C}--fleet${R} for your configured set
      ${C}tess new${R} ${D}<repo> <name>${R}        any repo on disk by name ${D}(unknown repo = error, never a guess)${R}
      ${C}tess new${R} ${D}… --repo a,b · --fleet · --all · --base <branch>${R}
      ${C}tess repos${R}                    the repo map — every repo on disk, ranked by use
@@ -91,9 +91,9 @@ cat <<EOF
      ${C}tess todo board${R}               the same todos as a kanban board
 
   ${B}${G}🤖 SESSIONS${R} ${D}(worktree + agent + context — spawn one, resume any)${R}
-     ${C}tess claude${R}|${C}kimi${R} ${D}[feat] ["task"] [--model M --effort E --readonly --auto --budget N]${R}
+     ${C}tess claude${R}|${C}kimi${R}|${C}cursor${R} ${D}[feat] ["task"] [--model M --effort E --context C --fast]${R}
                                  spawn — worktree auto-created, settings VERIFIED, roles ENFORCED
-     ${C}tess resume${R}                   resume ANY past Claude/Kimi session (any folder)
+     ${C}tess resume${R}                   resume ANY past Claude/Kimi/Cursor session (any folder)
      ${C}tess handoff${R} ${D}<peer>|back${R}      move a live session (context + folder + uncommitted work) between machines
      ${C}tess think${R} · ${C}post${R}             thinking partner · content partner ${D}(both use your vault)${R}
      ${C}tess local${R} ${D}[prompt]${R}           offline AI via ollama ${D}(also ${C}tess small${R} / ${C}big${R})${R}
@@ -315,7 +315,7 @@ case "$cmd" in
 esac
 
 # words that can never be feature/agent names (subcommands + obvious traps)
-TESS_RESERVED="help menu version new repos ls list rm remove clean env branches path wt worktrees claude kimi agents agent loop resume r handoff local offline small big med medium think partner post write brand boss ask voice listen git lg fish matrix bonsai pipes dex doctor disk cheat fix-files fixfiles update wire commands custom open app launch apps login startup brief hub person company add log people companies reminders todo todos followups calendar cal messages msg chat thread send text calls mail email music read book readpos done inbox report digest status team orchestrate ship wait watch approve inject tell kill hcom diff spend all vault note notes kanban tasks base bases links canvas"
+TESS_RESERVED="help menu version new repos ls list rm remove clean env branches path wt worktrees claude kimi cursor agents agent loop resume r handoff local offline small big med medium think partner post write brand boss ask voice listen git lg fish matrix bonsai pipes dex doctor disk cheat fix-files fixfiles update wire commands custom open app launch apps login startup brief hub person company add log people companies reminders todo todos followups calendar cal messages msg chat thread send text calls mail email music read book readpos done inbox report digest status team orchestrate ship wait watch approve inject tell kill hcom diff spend all vault note notes kanban tasks base bases links canvas"
 export TESS_RESERVED
 _validpath() {  # _validpath <name> <what> — flag/path safety only, NO reserved check.
   # Used on paths that manage EXISTING features (rm/path/env/done/ship): a feature
@@ -477,13 +477,16 @@ case "$cmd" in
     ;;
 
   # agents ---------------------------------------------------------------
-  claude|kimi)
-    # tess claude|kimi                      interactive, current tab (unchanged)
-    # tess claude|kimi <feat|.> ["prompt"] [--file f] [--model m] [--effort e]
+  claude|kimi|cursor)
+    # tess claude|kimi|cursor              interactive, current tab (unchanged)
+    # tess claude|kimi|cursor <feat|.> ["prompt"] [--file f] [--model m] [--effort e]
     #   feat -> create the worktree if missing, spawn in a new pane there.
     #   The spawner GUARANTEES model/effort/prompt actually apply (launch flags
     #   don't always stick through the PTY) — see libexec/fleet/spawn.py.
-    [ $# -eq 0 ] && { _hcom "$cmd" --run-here; exit $?; }
+    if [ $# -eq 0 ]; then
+      case "$cmd" in cursor) _hcom cursor-agent --run-here ;; *) _hcom "$cmd" --run-here ;; esac
+      exit $?
+    fi
     exec python3 "$TESS_LIB/fleet/spawn.py" "$cmd" "$@"
     ;;
   agents)   # bare = live fleet dashboard; --json = machine-readable fleet state

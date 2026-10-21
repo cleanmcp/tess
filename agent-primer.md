@@ -3,7 +3,7 @@
 `tess` is a local CLI for running many AI coding **sessions** at once — each an isolated worktree + agent + context you spawn, watch, steer, and ship. **Run `tess` (no args) to see every command** — discover on demand, don't memorize. Output is plain when piped (parse it directly); every interactive command takes inline params and fails-with-guidance instead of hanging when you run it non-interactively.
 
 **Worktrees — ALWAYS go through tess, never raw `git worktree`. The grammar is deterministic:**
-- `tess new <feature>` — the repo you're standing in (a fleet repo, or outside any repo → the configured set) · `tess new <repo> <feature>` — that repo by name (an unknown repo is an ERROR, never reinterpreted) · flags: `--repo a,b` · `--fleet`/`--all` · `--base <branch>`
+- `tess new <feature>` — pick a repo (interactive menu) or the repo you're in · `tess new --fleet` / `--all` only if you configured a fleet · `tess new <repo> <feature>` — that repo by name (unknown = ERROR) · flags: `--repo a,b` · `--base <branch>`
 - `tess ls` (features) · `tess wt` (worktree status: repos, branch, dirty) · `tess path <feature> [repo]` (get a path: `cd "$(tess path <feature> <repo>)"` — a single-repo feature returns the repo dir itself, so you always land inside a git repo)
 - `tess env <feature>` (refresh .env) · `tess rm <feature>` (tear down) · `tess clean` (prune stale) · `tess branches` (delete merged)
 - A MULTI-repo feature root (`<worktree-root>/<feature>`) is NOT a repo — it holds one git worktree per repo; `cd` into a subfolder to run git (its AGENTS.md explains the layout).

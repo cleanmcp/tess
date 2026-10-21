@@ -41,7 +41,7 @@ done
 
 echo "== worktrees: fleet fan-out =="
 mkrepo "$TMP/core/repo-a"; mkrepo "$TMP/core/repo-b"; mkrepo "$TMP/repo-c"
-( cd "$TMP" && bash "$WT" feat1 ) >/dev/null 2>&1
+( cd "$TMP" && bash "$WT" --fleet feat1 ) >/dev/null 2>&1
 t "creates a worktree per fleet repo"      test -e "$TMP/wtroot/feat1/repo-a/.git" -a -e "$TMP/wtroot/feat1/repo-b/.git"
 t "copies .env files in"                   grep -q SECRET "$TMP/wtroot/feat1/repo-a/.env"
 t "multi-repo feature gets AGENTS.md"      test -f "$TMP/wtroot/feat1/AGENTS.md"
