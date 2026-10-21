@@ -492,7 +492,14 @@ def install_plan(top):
 
 
 def run_setup(target, rtop, plan, label):
-    """Install dependencies on the peer, in a login shell so its PATH is real."""
+    """Install dependencies on the peer, with that machine's real PATH.
+
+    `-l` alone is not enough: zsh reads .zshenv/.zprofile/.zlogin for a login
+    shell but only reads .zshrc when interactive, and bash likewise only reads
+    .bashrc when interactive — which is exactly where version managers (fnm,
+    nvm, pyenv, rbenv) put themselves. Without `-i` the project's own package
+    manager is simply not found.
+    """
     cmd, creates = plan
     if creates and ssh(target, f"test -d {q(os.path.join(rtop, creates))} && echo y",
                        check=False):
@@ -501,7 +508,7 @@ def run_setup(target, rtop, plan, label):
     note(f"installing dependencies on {label} ({cmd}) — this one is slow")
     script = f"cd {q(rtop)} && {cmd}"
     p = subprocess.run(["ssh", "-o", "BatchMode=yes", target,
-                        f'$SHELL -lc {q(script)}'], capture_output=True, text=True)
+                        f'$SHELL -lic {q(script)}'], capture_output=True, text=True)
     if p.returncode != 0:
         tail = (p.stderr or p.stdout).strip().splitlines()[-3:]
         print(f"  {C.yellow}! dependencies did not install{C.r}")
