@@ -135,7 +135,18 @@ def rsync(src, dst, extra=()):
     cmd = ["rsync", "-az", "--partial"]
     for s in SKIP:
         cmd += ["--exclude", s]
-    run(cmd + list(extra) + [src, dst])
+    srcs = [src] if isinstance(src, str) else list(src)
+    run(cmd + list(extra) + srcs + [dst])
+
+
+def copy_envs(names, src_prefix, dst_prefix):
+    """Copy .env* files one explicit path at a time.
+
+    macOS ships openrsync, which ignores the usual --include/--exclude/
+    --no-recursive filter trick and silently copies nothing, so name each file.
+    """
+    for n in names:
+        rsync(f"{src_prefix}{n}", f"{dst_prefix}{n}")
 
 
 def map_path(path, src_home, dst_home):
@@ -281,10 +292,26 @@ def session_by_id(sid):
 
 # ---------------------------------------------------------------- git
 
+def nested_repos(path):
+    try:
+        return [d for d in sorted(os.listdir(path))
+                if os.path.exists(os.path.join(path, d, ".git"))]
+    except OSError:
+        return []
+
+
 def git_context(cwd):
-    """The worktree holding `cwd`, its branch, and the repo it was cut from."""
+    """The worktree holding `cwd`, its branch, and the repo it was cut from.
+
+    A tess feature root is not itself a repo — it holds one worktree per repo.
+    When it holds exactly one, that repo is unambiguously the session's code, so
+    describe it; the transcript still belongs to the folder it was recorded in.
+    """
     top = run(["git", "-C", cwd, "rev-parse", "--show-toplevel"], check=False)
     if not top:
+        inner = nested_repos(cwd)
+        if len(inner) == 1:
+            return git_context(os.path.join(cwd, inner[0]))
         return None
     branch = run(["git", "-C", top, "branch", "--show-current"])
     if not branch:
@@ -495,17 +522,16 @@ def send(name, target, sess, dry):
         finally:
             unwip(g["top"], had)         # this side goes back to being dirty
 
-        envs = [f for f in os.listdir(g["top"]) if f.startswith(".env")]
+        envs = [f for f in sorted(os.listdir(g["top"])) if f.startswith(".env")
+                and os.path.isfile(os.path.join(g["top"], f))]
         if envs:
             note(f"{len(envs)} .env file(s)")
-            rsync(g["top"] + "/", f"{target}:{rtop}/",
-                  extra=["--include", ".env*", "--exclude", "*", "--no-recursive"])
+            copy_envs(envs, g["top"] + "/", f"{target}:{rtop}/")
     else:
-        nested = [d for d in sorted(os.listdir(cwd))
-                  if os.path.exists(os.path.join(cwd, d, ".git"))]
-        if nested:
-            die(f"{cwd.replace(HOME, '~')} isn't a repo — it holds {', '.join(nested)}.\n"
-                f"  Hand off one repo at a time: cd into it first.")
+        inner = nested_repos(cwd)
+        if len(inner) > 1:
+            die(f"{cwd.replace(HOME, '~')} holds several repos ({', '.join(inner)}), so it "
+                f"can't travel as one unit.\n  Hand off one at a time: cd into it first.")
         note("not a repo — rsyncing the folder")
         ssh(target, f"mkdir -p {q(os.path.dirname(dst_cwd))}")
         rsync(cwd + "/", f"{target}:{dst_cwd}/")
@@ -563,8 +589,10 @@ def take_back(name, target, dry, want_pick):
             unwip(g["top"], had)
         finally:
             unwip(None, had, remote=(target, rtop))
-        rsync(f"{target}:{rtop}/", g["top"] + "/",
-              extra=["--include", ".env*", "--exclude", "*", "--no-recursive"])
+        listing = ssh(target, f"ls -1 {q(rtop)} 2>/dev/null", check=False)
+        envs = [n for n in listing.splitlines() if n.startswith(".env")]
+        if envs:
+            copy_envs(envs, f"{target}:{rtop}/", g["top"] + "/")
     else:
         note("not a repo — rsyncing the folder back")
         rsync(f"{target}:{rtop}/", local_cwd + "/")
