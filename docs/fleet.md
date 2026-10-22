@@ -121,6 +121,16 @@ A session is three things, and each travels the way that suits it:
 | env | `.env*` files rsynced beside it (gitignored, so no commit can carry them) |
 | context | the agent transcript, rsynced with every absolute path rewritten for the peer's `$HOME` |
 
+Dependencies are the one thing that never travels: `node_modules` and friends are gigabytes
+of platform-specific build output. So the peer installs its own, detected from the lockfile
+the repo commits (`pnpm-lock.yaml` → `pnpm install --frozen-lockfile`, `uv.lock` → `uv sync`,
+and so on). `--no-setup` skips it; `TESS_HANDOFF_SETUP="<cmd>"` replaces it. The point is that
+a handoff is **one command** — nothing to remember on arrival.
+
+Anything uncommitted sitting in the peer's copy of that worktree is committed to a
+`refs/tess-handoff/rescue/<branch>-<stamp>` ref before the switch, and the hash is printed.
+Handoff is authoritative, but it never silently destroys a file someone left on that machine.
+
 **It's a baton, not a mirror.** Exactly one machine holds a session at a time: the source is
 parked with a `.tess-handoff` marker, so the two sides can't diverge and there is no merge
 step. Handing off a folder that is already parked is an error, and the transcript is
