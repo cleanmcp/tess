@@ -63,3 +63,31 @@ tess todo                          list open
 tess todo add [-p <proj>] <text>   add (auto-tagged with the current repo)
 tess todo done <id>
 ```
+
+## Cut one on another machine
+
+```bash
+tess new --on mini <feature>                 the repo you're standing in
+tess new --on mini Mono-icarus <feature>     that repo by name
+tess new --on mini <feature> --base dev
+tess new --on mini <feature> --no-setup      skip the dependency install
+tess new --on mini <feature> --dry-run
+```
+
+Same grammar as local `tess new`, one flag added. The peer does the work — its own
+`tess new` runs there, so the worktree lands in **its** configured root, by its rules, with
+**its** `.env` files copied in. Then dependencies are installed there, because a worktree you
+cannot run isn't finished. If its tess refuses (unknown repo, unsafe feature name), you see
+that machine's own wording.
+
+Feature names are flat — letters, digits, `.` `_` `-`. A branch-style name like `fix/thing`
+is not a feature name; the branch is named after the feature.
+
+Peers come from the same setting the other cross-machine commands read:
+
+```bash
+TESS_PEERS="mini=mac-mini  box=dev@10.0.0.5"     # ~/.config/tess/config
+```
+
+Related: `tess handoff <peer>` moves a session that is *already running* here, and
+`tess tunnel <peer> <port>` opens that machine's dev server on this one.

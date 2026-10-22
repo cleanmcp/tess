@@ -32,6 +32,7 @@ if [ -f "$HOME/.config/tess/config" ]; then
 fi
 export TESS_VAULT TESS_HUB TESS_WORKTREE_ROOT TESS_CORE TESS_REPOS TESS_REPOS_ALL TESS_MAIN_BRANCH TESS_STARTUP_OPEN TESS_STARTUP_QUIT
 export TESS_PEERS="${TESS_PEERS:-}"   # peer machines: "name=<ssh target> …"
+export TESS_PEERS="${TESS_PEERS:-}"   # peer machines: "name=<ssh target> …"
 export TESS_VAULT_CONFIGURED="$_VAULT_CONFIGURED"   # python helpers mirror _vault_ok's self-scaffold rule
 export TESS_NOTIFY_CONTACT="${TESS_NOTIFY_CONTACT:-}"   # phone pings (tess watch --phone)
 export TESS_MAIL_FROM="${TESS_MAIL_FROM:-}"             # default From account (tess mail send)
@@ -375,6 +376,11 @@ case "$cmd" in
 
   # worktrees ---------------------------------------------------------------
   new)      # grammar: tess new [<repo>] <feature> [--repo a,b] [--fleet|--all] [--base <br>]
+    # --on <peer> cuts the worktree on another machine instead, via that
+    # machine's own tess (same grammar, one extra flag)
+    case " $* " in
+      *" --on "*) exec python3 "$TESS_LIB/fleet/remote_new.py" "$@" ;;
+    esac
     # the feature is the LAST positional — validate that one; repo names are
     # checked by worktree.sh itself (unknown repo = clean error, never reinterpreted)
     _feat=""; _skip=0

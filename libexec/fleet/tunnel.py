@@ -36,6 +36,7 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "lib"))
 from tess_common import C  # noqa: E402
+from tess_peers import no_peers_message, peers  # noqa: E402
 
 HOME = os.path.expanduser("~")
 STATE = os.path.join(os.environ.get("TESS_STATE") or
@@ -48,27 +49,6 @@ LOGIN_PORTS = [54545, 1455]
 def die(msg, code=1):
     print(f"{C.red}✗{C.r} {msg}", file=sys.stderr)
     sys.exit(code)
-
-
-def peers():
-    """{name: ssh target} from TESS_PEERS — env first, then the config file."""
-    raw = os.environ.get("TESS_PEERS")
-    if raw is None:
-        try:
-            with open(os.path.join(HOME, ".config", "tess", "config")) as fh:
-                for line in fh:
-                    m = re.match(r'\s*TESS_PEERS\s*=\s*"?([^"#]*)"?', line)
-                    if m:
-                        raw = m.group(1)
-        except OSError:
-            pass
-    out = {}
-    for entry in (raw or "").split():
-        if "=" in entry:
-            name, target = entry.split("=", 1)
-            if name and target:
-                out[name.lower()] = target
-    return out
 
 
 def parse_port(spec):
@@ -177,8 +157,7 @@ def main():
 
     ps = peers()
     if not ps:
-        die('no peers configured. Add one to ~/.config/tess/config:\n\n'
-            '    TESS_PEERS="mini=<ssh target>"\n')
+        die(no_peers_message())
     name = args.peer.lower()
     if name not in ps:
         die(f"unknown peer '{name}' — configured: {', '.join(ps)}")

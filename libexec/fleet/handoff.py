@@ -49,6 +49,8 @@ import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "lib"))
 from tess_common import C, short  # noqa: E402
+from tess_peers import (install_plan, login_shell,  # noqa: E402
+                        no_peers_message, peers, remote_tess)
 
 HOME = os.path.expanduser("~")
 MARKER = ".tess-handoff"
@@ -92,35 +94,6 @@ def preflight():
     missing = [t for t in ("ssh", "rsync", "git") if not shutil.which(t)]
     if missing:
         die(f"missing on this machine: {', '.join(missing)}")
-
-
-def peers():
-    """{name: ssh target} from TESS_PEERS (env first, then the config file)."""
-    raw = os.environ.get("TESS_PEERS")
-    if raw is None:
-        cfg = os.path.join(HOME, ".config", "tess", "config")
-        try:
-            with open(cfg) as fh:
-                for line in fh:
-                    m = re.match(r'\s*TESS_PEERS\s*=\s*"?([^"#]*)"?', line)
-                    if m:
-                        raw = m.group(1)
-        except OSError:
-            pass
-    out = {}
-    for entry in (raw or "").split():
-        if "=" in entry:
-            name, target = entry.split("=", 1)
-            if name and target:
-                out[name.lower()] = target
-    return out
-
-
-def no_peers():
-    die("no peers configured. Add one to ~/.config/tess/config:\n\n"
-        f'    TESS_PEERS="mini=<ssh target>"\n\n'
-        "  where <ssh target> is a Host alias, user@host, or host that `ssh` can\n"
-        "  reach with key-based auth (a password prompt would hang).")
 
 
 def remote_home(target):
@@ -334,16 +307,6 @@ def git_context(cwd):
             "repo": os.path.basename(central), "feature": feature}
 
 
-def remote_tess(target):
-    """Find tess on a peer. A non-interactive ssh shell doesn't read ~/.zshrc or
-    ~/.bashrc, so PATH there is minimal — look where installers actually put it."""
-    probe = ('{ "$SHELL" -lc "command -v tess" 2>/dev/null; '
-             'command -v tess 2>/dev/null; '
-             'ls "$HOME/.local/bin/tess" 2>/dev/null; } | head -1')
-    found = ssh(target, probe, check=False)
-    return found.splitlines()[0].strip() if found else ""
-
-
 def wip_commit(top, remote=None):
     """Park every uncommitted change in one commit.
 
@@ -463,34 +426,6 @@ def move_transcript(sid, src_path, src_home, dst_home, dst_cwd, to=None, frm=Non
         shutil.rmtree(tmp, ignore_errors=True)
 
 
-# Dependencies never travel: node_modules and friends are gigabytes of
-# platform-specific build output, so handoff excludes them (see SKIP) and the
-# peer installs its own. Detected from the lockfile the repo actually commits.
-INSTALLERS = [
-    ("pnpm-lock.yaml", "pnpm install --frozen-lockfile", "node_modules"),
-    ("bun.lockb", "bun install --frozen-lockfile", "node_modules"),
-    ("bun.lock", "bun install --frozen-lockfile", "node_modules"),
-    ("yarn.lock", "yarn install --immutable", "node_modules"),
-    ("package-lock.json", "npm ci", "node_modules"),
-    ("uv.lock", "uv sync", ".venv"),
-    ("poetry.lock", "poetry install", ".venv"),
-    ("Cargo.lock", "cargo fetch", "target"),
-    ("go.sum", "go mod download", ""),
-    ("Gemfile.lock", "bundle install", ""),
-]
-
-
-def install_plan(top):
-    """(command, dir-it-creates) for this project, or None if we don't know one."""
-    override = os.environ.get("TESS_HANDOFF_SETUP")
-    if override is not None:
-        return (override.strip(), "") if override.strip() else None
-    for lock, cmd, creates in INSTALLERS:
-        if os.path.exists(os.path.join(top, lock)):
-            return cmd, creates
-    return None
-
-
 def run_setup(target, rtop, plan, label):
     """Install dependencies on the peer, with that machine's real PATH.
 
@@ -507,8 +442,8 @@ def run_setup(target, rtop, plan, label):
         return True
     note(f"installing dependencies on {label} ({cmd}) — this one is slow")
     script = f"cd {q(rtop)} && {cmd}"
-    p = subprocess.run(["ssh", "-o", "BatchMode=yes", target,
-                        f'$SHELL -lic {q(script)}'], capture_output=True, text=True)
+    p = subprocess.run(["ssh", "-o", "BatchMode=yes", target, login_shell(script)],
+                       capture_output=True, text=True)
     if p.returncode != 0:
         tail = (p.stderr or p.stdout).strip().splitlines()[-3:]
         print(f"  {C.yellow}! dependencies did not install{C.r}")
@@ -778,7 +713,7 @@ def main():
 
     preflight()
     if not ps:
-        no_peers()
+        die(no_peers_message())
 
     if args.peer in ("back", "here", "pull", "home"):
         name = (args.which or next(iter(ps))).lower()

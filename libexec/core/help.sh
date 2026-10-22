@@ -6,12 +6,14 @@ B=$'\033[1m'; C=$'\033[36m'; D=$'\033[2m'; R=$'\033[0m'; [ -t 1 ] || { B=; C=; D
 h() { printf "%s%s%s\n" "$C" "$1" "$R"; shift; for l in "$@"; do printf "  %s\n" "$l"; done; echo; }
 
 case "$c" in
-  new|worktree) h "tess new [<repo>] <feature> [--repo a,b] [--fleet|--all] [--base <branch>]" \
+  new|worktree) h "tess new [<repo>] <feature> [--repo a,b] [--fleet|--all] [--base <branch>] [--on <peer>]" \
     "Create feature worktrees (+ .env files copied in; opens in cmux if installed). Deterministic grammar:" \
     "  tess new <feature>         -> pick a repo (interactive) or the repo you're in; --fleet for TESS_REPOS" \
     "  tess new <repo> <feature>  -> that repo by NAME (see tess repos) — an unknown repo is an ERROR, never reinterpreted" \
     "  --repo a,b explicit set · --fleet/--all use TESS_REPOS / TESS_REPOS_ALL from ~/.config/tess/config (opt-in, never hardcoded)" \
     "Several copies of a repo name? The one you actually use wins (zoxide + git activity; a genuine tie shows a picker)." \
+    "  --on <peer> cuts it on ANOTHER machine, via that machine's own tess, then installs dependencies there so it is runnable on arrival" \
+    "Feature names are flat (letters, digits, . _ -) — a branch-style name like fix/thing is not a feature name." \
     "Single-repo features have no folder shell: tess path <feature> (and spawned agents) land INSIDE the repo." \
     "${D}e.g. tess new redis-cache · tess new lokus fix-toolbar · tess new hotfix-login --base develop${R}" ;;
   repos)     h "tess repos [index|find <name>|pick <name>]" \
