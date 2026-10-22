@@ -49,6 +49,8 @@ import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "lib"))
 from tess_common import C, short  # noqa: E402
+from tess_peers import (install_plan, login_shell,  # noqa: E402
+                        no_peers_message, peers, remote_tess)
 
 HOME = os.path.expanduser("~")
 MARKER = ".tess-handoff"
@@ -92,35 +94,6 @@ def preflight():
     missing = [t for t in ("ssh", "rsync", "git") if not shutil.which(t)]
     if missing:
         die(f"missing on this machine: {', '.join(missing)}")
-
-
-def peers():
-    """{name: ssh target} from TESS_PEERS (env first, then the config file)."""
-    raw = os.environ.get("TESS_PEERS")
-    if raw is None:
-        cfg = os.path.join(HOME, ".config", "tess", "config")
-        try:
-            with open(cfg) as fh:
-                for line in fh:
-                    m = re.match(r'\s*TESS_PEERS\s*=\s*"?([^"#]*)"?', line)
-                    if m:
-                        raw = m.group(1)
-        except OSError:
-            pass
-    out = {}
-    for entry in (raw or "").split():
-        if "=" in entry:
-            name, target = entry.split("=", 1)
-            if name and target:
-                out[name.lower()] = target
-    return out
-
-
-def no_peers():
-    die("no peers configured. Add one to ~/.config/tess/config:\n\n"
-        f'    TESS_PEERS="mini=<ssh target>"\n\n'
-        "  where <ssh target> is a Host alias, user@host, or host that `ssh` can\n"
-        "  reach with key-based auth (a password prompt would hang).")
 
 
 def remote_home(target):
@@ -334,16 +307,6 @@ def git_context(cwd):
             "repo": os.path.basename(central), "feature": feature}
 
 
-def remote_tess(target):
-    """Find tess on a peer. A non-interactive ssh shell doesn't read ~/.zshrc or
-    ~/.bashrc, so PATH there is minimal — look where installers actually put it."""
-    probe = ('{ "$SHELL" -lc "command -v tess" 2>/dev/null; '
-             'command -v tess 2>/dev/null; '
-             'ls "$HOME/.local/bin/tess" 2>/dev/null; } | head -1')
-    found = ssh(target, probe, check=False)
-    return found.splitlines()[0].strip() if found else ""
-
-
 def wip_commit(top, remote=None):
     """Park every uncommitted change in one commit.
 
@@ -411,10 +374,13 @@ def parked():
     return out
 
 
-def park(cwd, peer, sess, landed):
+def park(cwd, peer, sess, landed, landed_repo=None):
+    """Record where it went. `landed_at` is the session's folder; `landed_repo`
+    is the git worktree inside it, which differs for a multi-repo feature root."""
     with open(os.path.join(cwd, MARKER), "w") as fh:
         json.dump({"peer": peer, "store": STORE.name, "sid": sess["sid"],
                    "label": sess["label"], "landed_at": landed,
+                   "landed_repo": landed_repo or landed,
                    "at": time.strftime("%Y-%m-%d %H:%M")}, fh, indent=2)
 
 
@@ -460,9 +426,62 @@ def move_transcript(sid, src_path, src_home, dst_home, dst_cwd, to=None, frm=Non
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def run_setup(target, rtop, plan, label):
+    """Install dependencies on the peer, with that machine's real PATH.
+
+    `-l` alone is not enough: zsh reads .zshenv/.zprofile/.zlogin for a login
+    shell but only reads .zshrc when interactive, and bash likewise only reads
+    .bashrc when interactive — which is exactly where version managers (fnm,
+    nvm, pyenv, rbenv) put themselves. Without `-i` the project's own package
+    manager is simply not found.
+    """
+    cmd, creates = plan
+    if creates and ssh(target, f"test -d {q(os.path.join(rtop, creates))} && echo y",
+                       check=False):
+        note(f"dependencies already there on {label}")
+        return True
+    note(f"installing dependencies on {label} ({cmd}) — this one is slow")
+    script = f"cd {q(rtop)} && {cmd}"
+    p = subprocess.run(["ssh", "-o", "BatchMode=yes", target, login_shell(script)],
+                       capture_output=True, text=True)
+    if p.returncode != 0:
+        tail = (p.stderr or p.stdout).strip().splitlines()[-3:]
+        print(f"  {C.yellow}! dependencies did not install{C.r}")
+        for t in tail:
+            print(f"    {C.grey}{t}{C.r}")
+        print(f"  {C.grey}finish it there:  ssh {target} 'cd {rtop} && {cmd}'{C.r}")
+        return False
+    return True
+
+
+def clear_for_checkout(target, rtop, branch):
+    """Make the peer's worktree clean enough to switch onto the incoming branch.
+
+    Handoff is authoritative — the peer is not the holder — but "authoritative"
+    must not mean "silently destroys". Anything uncommitted there is committed
+    onto a rescue ref first and the hash is printed, so a file someone left on
+    that machine is always recoverable.
+    """
+    if not ssh(target, f"git -C {q(rtop)} status --porcelain", check=False):
+        return None
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    ref = f"{NEUTRAL}/rescue/{branch}-{stamp}"
+    msg = f"tess handoff: state found on the peer, rescued {stamp}"
+    ssh(target, " && ".join([
+        f"git -C {q(rtop)} add -A",
+        f"git -C {q(rtop)} -c user.name=tess -c user.email=tess@localhost "
+        f"commit --no-verify -q -m {q(msg)}",
+        f"git -C {q(rtop)} update-ref {q(ref)} HEAD",
+        f"git -C {q(rtop)} reset -q --hard HEAD~1",
+    ]))
+    sha = ssh(target, f"git -C {q(rtop)} rev-parse --short {q(ref)}", check=False)
+    note(f"peer had uncommitted files — saved as {ref} ({sha})")
+    return ref
+
+
 # ---------------------------------------------------------------- send
 
-def send(name, target, sess, dry):
+def send(name, target, sess, dry, setup=True):
     cwd = sess.get("cwd")
     if not cwd or not os.path.isdir(cwd):
         die(f"that session's folder is gone ({cwd or 'unknown'}) — nothing to hand off")
@@ -486,6 +505,10 @@ def send(name, target, sess, dry):
     if g:
         print(f"  {C.grey}git    {C.r}  {g['repo']} @ {g['branch']} "
               f"{C.grey}(delta push over ssh){C.r}")
+    _plan = install_plan(g["top"] if g else cwd)
+    if _plan:
+        print(f"  {C.grey}deps   {C.r}  {_plan[0]}"
+              + (f"  {C.grey}(skipped){C.r}" if not setup else ""))
     if dry:
         print(f"\n{C.yellow}dry run — nothing touched{C.r}\n")
         return
@@ -501,6 +524,7 @@ def send(name, target, sess, dry):
                 note(f"pushing {g['branch']} to the worktree there")
                 run(["git", "-C", g["top"], "push", "-q", "--force",
                      f"{target}:{rtop}", f"HEAD:{ref}"])
+                clear_for_checkout(target, rtop, g["branch"])
             else:
                 rcentral = map_path(g["central"], HOME, rhome)
                 if not ssh(target, f"test -d {q(rcentral)} && echo y", check=False):
@@ -544,17 +568,27 @@ def send(name, target, sess, dry):
 
     note(f"context ({os.path.getsize(sess['path']) // 1024} KB)")
     move_transcript(sess["sid"], sess["path"], HOME, rhome, dst_cwd, to=target)
-    park(cwd, name, sess, dst_cwd)
+    park(cwd, name, sess, dst_cwd,
+         landed_repo=map_path(g["top"], HOME, rhome) if g else dst_cwd)
+
+    ready = True
+    plan = install_plan(g["top"] if g else cwd)
+    if plan and setup:
+        ready = run_setup(target, (g["top"] if g else cwd).replace(HOME, rhome, 1),
+                          plan, name)
+    elif plan:
+        note(f"skipped dependencies (--no-setup) — run `{plan[0]}` there before working")
 
     resume = STORE.resume_cmd.format(sid=sess["sid"])
-    print(f"\n{C.green}✓ {name} has it.{C.r} Pick it up there:\n")
+    verb = "Pick it up there" if ready else "Pick it up there once that is sorted"
+    print(f"\n{C.green}✓ {name} has it.{C.r} {verb}:\n")
     print(f"    {C.bold}ssh -t {target} 'cd {dst_cwd} && {resume}'{C.r}\n")
     print(f"  {C.grey}bring it back with:  tess handoff back {name}{C.r}\n")
 
 
 # ---------------------------------------------------------------- take back
 
-def take_back(name, target, dry, want_pick):
+def take_back(name, target, dry, want_pick, setup=True):
     held = [(d, h) for d, h in parked() if h.get("peer") == name]
     if not held:
         die(f"nothing here is handed off to {name}.\n"
@@ -577,7 +611,10 @@ def take_back(name, target, dry, want_pick):
         local_cwd, h = held[0]
 
     rhome = remote_home(target)
-    rtop = h["landed_at"]
+    g = git_context(local_cwd)
+    # older markers only recorded the session folder; derive the repo from this side
+    rtop = h.get("landed_repo") or (map_path(g["top"], HOME, rhome) if g
+                                    else h["landed_at"])
     print(f"\n{C.bold}taking back ← {name}{C.r}")
     print(f"  {C.grey}session{C.r}  {h.get('label', h['sid'])}")
     print(f"  {C.grey}folder {C.r}  {rtop}  {C.grey}→{C.r}  {local_cwd.replace(HOME, '~')}")
@@ -604,9 +641,24 @@ def take_back(name, target, dry, want_pick):
         rsync(f"{target}:{rtop}/", local_cwd + "/")
 
     note("context")
-    src_path = STORE.transcript_for(rhome, rtop, h["sid"])
+    # the transcript is filed under the SESSION folder's slug, which for a
+    # feature root is the parent of the repo dir that git just worked against
+    src_path = STORE.transcript_for(rhome, h["landed_at"], h["sid"])
     move_transcript(h["sid"], src_path, rhome, HOME, local_cwd, frm=target)
     unpark(local_cwd)
+
+    # the tree may have arrived here from a different platform, or the lockfile
+    # may have moved while it was away, so settle dependencies on this side too
+    plan = install_plan(g["top"] if g else local_cwd)
+    if plan and setup:
+        cmd, creates = plan
+        top = g["top"] if g else local_cwd
+        if creates and os.path.isdir(os.path.join(top, creates)):
+            note("dependencies already here")
+        else:
+            note(f"installing dependencies here ({cmd})")
+            if subprocess.run(cmd, shell=True, cwd=top).returncode != 0:
+                print(f"  {C.yellow}! dependencies did not install — run `{cmd}` here{C.r}")
 
     resume = STORE.resume_cmd.format(sid=h["sid"])
     print(f"\n{C.green}✓ back on this machine.{C.r} Pick it up:\n")
@@ -651,6 +703,8 @@ def main():
     ap.add_argument("--pick", "-p", action="store_true", help="choose the session from a list")
     ap.add_argument("--session", "-s", metavar="ID", help="hand off this session id")
     ap.add_argument("--dry-run", "-n", action="store_true", help="print the plan only")
+    ap.add_argument("--no-setup", action="store_true",
+                    help="don't install dependencies on the peer")
     args = ap.parse_args()
 
     ps = peers()
@@ -659,13 +713,14 @@ def main():
 
     preflight()
     if not ps:
-        no_peers()
+        die(no_peers_message())
 
     if args.peer in ("back", "here", "pull", "home"):
         name = (args.which or next(iter(ps))).lower()
         if name not in ps:
             die(f"unknown peer '{name}' — configured: {', '.join(ps) or 'none'}")
-        return take_back(name, ps[name], args.dry_run, args.pick)
+        return take_back(name, ps[name], args.dry_run, args.pick,
+                         setup=not args.no_setup)
 
     name = args.peer.lower()
     if name not in ps:
@@ -681,7 +736,7 @@ def main():
         if not sess:
             print(f"{C.yellow}no session recorded for this folder.{C.r}")
             sess = pick(STORE.sessions(), "hand off which session?")
-    return send(name, ps[name], sess, args.dry_run)
+    return send(name, ps[name], sess, args.dry_run, setup=not args.no_setup)
 
 
 if __name__ == "__main__":
