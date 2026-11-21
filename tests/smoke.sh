@@ -320,6 +320,19 @@ t "fleet cmds name a missing backend" bash -c "env -i HOME='$FAKE/home' PATH='$F
 # vault helpers on a machine with NO vault: guidance naming TESS_VAULT, never a traceback
 t "vault cmds guide when unconfigured" \
   bash -c "for c in vault 'note ls' kanban tasks bases; do env -i HOME='$FAKE/home' PATH='$FAKE/bin:/usr/bin:/bin' bash '$TESS' \$c 2>&1 | grep -q 'TESS_VAULT' || exit 1; done"
+echo "== update survives a chmod =="
+t "every helper is executable in git (install.sh chmods them; a 644 entry dirties every install)" \
+  bash -c "test -z \"\$(git -C '$ROOT_DIR' ls-files -s libexec bin | awk '\$1==\"100644\"{print \$4}')\""
+UP="$TMP/upd"; mkdir -p "$UP/src/libexec/core"
+cp "$ROOT_DIR/libexec/core/update.sh" "$UP/src/libexec/core/update.sh"
+( cd "$UP/src" && git init -q -b main . && printf 'x\n' > libexec/core/zz && chmod 644 libexec/core/zz \
+  && git add -A && git -c user.email=t@t -c user.name=t commit -qm base ) >/dev/null 2>&1
+git clone -q "$UP/src" "$UP/inst" 2>/dev/null
+chmod +x "$UP/inst/libexec/core/zz"
+( cd "$UP/src" && printf 'y\n' >> libexec/core/zz && git -c user.email=t@t -c user.name=t commit -qam next ) >/dev/null 2>&1
+t "tess update pulls past a mode-only change" \
+  bash -c "env HOME='$TMP/updhome' bash '$UP/inst/libexec/core/update.sh' --now | grep -q 'tess updated'"
+
 echo "== nodes (no machine ever contacted) =="
 NH="$TMP/nodehome"; mkdir -p "$NH/.config/tess"
 printf '# keep me\nTESS_MAIN_BRANCH="main"\n' > "$NH/.config/tess/config"
