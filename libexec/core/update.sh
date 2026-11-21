@@ -24,8 +24,11 @@ fi
 mkdir -p "$(dirname "$stamp")"; touch "$stamp"
 
 before=$(git -C "$REPO" rev-parse --short HEAD 2>/dev/null || echo "")
-# --ff-only + never touch a dirty tree: safe, won't clobber local edits/commits
-git -C "$REPO" pull --quiet --ff-only 2>/dev/null || { [ "$force" = "--now" ] && echo "tess: up to date or local changes present (skipped)"; exit 0; }
+# --ff-only + never touch a dirty tree: safe, won't clobber local edits/commits.
+# core.fileMode=false: a permission bit is not an edit. install.sh marks helpers
+# executable, and without this a chmod alone made the tree "dirty" and every
+# later update was silently skipped.
+git -C "$REPO" -c core.fileMode=false pull --quiet --ff-only 2>/dev/null || { [ "$force" = "--now" ] && echo "tess: up to date or local changes present (skipped)"; exit 0; }
 after=$(git -C "$REPO" rev-parse --short HEAD 2>/dev/null || echo "")
 
 if [ "$force" = "--now" ]; then
