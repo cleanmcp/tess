@@ -67,7 +67,14 @@ case "$c" in
     "Code travels as a throwaway WIP commit pushed over ssh (delta only, soft-reset on arrival); .env files rsync beside it; the transcript is rewritten for the peer's home directory." \
     "Dependencies never travel — they are gigabytes of platform-specific output — so the peer installs its own, detected from the lockfile (--no-setup skips it; TESS_HANDOFF_SETUP sets the command)." \
     "Anything uncommitted found on the peer is committed to a rescue ref first and the hash printed, so nothing there is lost." \
-    "Bare 'tess handoff' shows what is parked where. Peers: TESS_PEERS=\"mini=<ssh target>\" in ~/.config/tess/config." ;;
+    "Bare 'tess handoff' shows what is parked where. Peers are your nodes — add one with: tess node add <name> <user@host>." ;;
+  node|nodes) h "tess node · tess node add <name> <user@host> · tess <node> [session|ls|handoff|back|tunnel|pull|run|kill]" \
+    "Your other machines as one surface. Bare 'tess node' shows every node: reachable, its tess version, and each shell open there with what it is running." \
+    "tess node add <name> <user@host[:port]> sets one up end to end: writes a Host alias in ~/.ssh/config, installs your ssh key (asks its password once), installs dtach + tess there, registers it in TESS_PEERS. Bare 'tess node add' asks. Safe to re-run; an unreachable machine leaves nothing behind." \
+    "Then the name is a command: 'tess mini' opens a PERSISTENT shell (dtach — closing the laptop only drops the connection; ctrl-\\ detaches, exit ends it). 'tess mini api' is a second one named api. 'tess mini ls' lists them; kill <name> · clean (idle only) · killall." \
+    "tess mini handoff [--pick|--dry-run] moves this folder's live session there · tess mini back takes it back · tess mini tunnel 3000 brings its localhost here · tess mini pull [<path>…] copies files down · tess mini run <cmd> runs one command with its real PATH · tess mini new <feature> cuts a worktree there." \
+    "tess node me (run ON a machine) prints the exact 'tess node add' line for it · tess node setup <name> re-checks/repairs · tess node rm <name> forgets it (nothing is deleted there) · tess node --json for scripts." \
+    "${D}Needs ssh on both ends (macOS: Sharing → Remote Login). Scripts: SSHPASS=… with sshpass installs the key without a prompt.${R}" ;;
   tunnel)    h "tess tunnel <peer> <port>… [--login] [--bg] · --list · --stop" \
     "Forward a peer's localhost to this machine: its 127.0.0.1:<port> shows up as your localhost:<port>." \
     "Use it to open a dev server an agent started on another machine, without binding that server to the network." \

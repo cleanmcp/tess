@@ -63,6 +63,7 @@ tess calendar 3              tess music top 20
 | | |
 |---|---|
 | [Sessions & the fleet](docs/fleet.md) | spawn, monitor, steer, ship, budgets, `tess team`, orchestration |
+| [Nodes](docs/nodes.md) | your other machines: `tess node add`, persistent shells, handoff / tunnel / pull by node name |
 | [Worktrees](docs/worktrees.md) | the grammar, multi-repo features, the repo map |
 | [The vault](docs/vault.md) | your knowledge base: notes, kanban, tasks, bases, wiki links, canvases |
 | [Connectors](docs/connectors.md) | messages, mail, music, calendar, books, notes, voice |

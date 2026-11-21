@@ -92,7 +92,7 @@ tess handoff mini --dry-run      print the plan, touch nothing
 tess handoff back [mini]         take it back
 ```
 
-Configure peers first — nothing is guessed:
+Peers are your nodes — `tess node add mini me@host` sets one up ([nodes.md](nodes.md)); `tess mini handoff` / `tess mini back` are the same commands. Under the hood:
 ## Reach another machine's localhost
 
 ```bash

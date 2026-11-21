@@ -48,6 +48,8 @@ esac
 
 echo
 say "core installed. Try:  tess"
+echo "  other machines:  tess node add <name> <user@host>  sets one up end to end"
+echo "                   (to add THIS machine from another one:  tess node me)"
 echo
 
 [ "$MINIMAL" = "--minimal" ] && exit 0
