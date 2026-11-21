@@ -320,6 +320,50 @@ t "fleet cmds name a missing backend" bash -c "env -i HOME='$FAKE/home' PATH='$F
 # vault helpers on a machine with NO vault: guidance naming TESS_VAULT, never a traceback
 t "vault cmds guide when unconfigured" \
   bash -c "for c in vault 'note ls' kanban tasks bases; do env -i HOME='$FAKE/home' PATH='$FAKE/bin:/usr/bin:/bin' bash '$TESS' \$c 2>&1 | grep -q 'TESS_VAULT' || exit 1; done"
+echo "== nodes (no machine ever contacted) =="
+NH="$TMP/nodehome"; mkdir -p "$NH/.config/tess"
+printf '# keep me\nTESS_MAIN_BRANCH="main"\n' > "$NH/.config/tess/config"
+nt() { env -u TESS_PEERS HOME="$NH" bash "$TESS" "$@"; }
+t "bare node runs with none configured"  nt node
+t "...and says how to add one"  bash -c "env -u TESS_PEERS HOME='$NH' bash '$TESS' node | grep -q 'tess node add'"
+t "node --json is valid json with none"  bash -c "env -u TESS_PEERS HOME='$NH' bash '$TESS' node --json | python3 -c 'import json,sys; assert json.load(sys.stdin)==[]'"
+t "help node exists"            bash -c "bash '$TESS' help node | grep -q 'tess node add'"
+t "the menu lists NODES"        bash -c "bash '$TESS' | grep -q NODES"
+t "node me prints an add line"  bash -c "env HOME='$NH' bash '$TESS' node me | grep -q 'tess node add'"
+t_not "add with no args (non-tty) errors"  bash -c "env -u TESS_PEERS HOME='$NH' bash '$TESS' node add </dev/null"
+t_not "a tess command can't be a node name"  nt node add handoff a@b --register-only
+t_not "an unsafe node name is refused"      nt node add 'a b' a@b --register-only
+t_not "an unsafe address is refused"        nt node add okname 'a@b;rm -rf x' --register-only
+t_not "an unknown flag is refused"          nt node add okname a@b --bogus
+t "refusals wrote nothing"      bash -c "! grep -q TESS_PEERS '$NH/.config/tess/config' && ! test -e '$NH/.ssh/config'"
+t "add --register-only registers"  nt node add tnbox9 dev@10.9.9.9:2222 --register-only
+t "...in TESS_PEERS"            grep -q '^TESS_PEERS="tnbox9=tnbox9"$' "$NH/.config/tess/config"
+t "...keeping the rest of the config"  grep -q '^# keep me$' "$NH/.config/tess/config"
+t "...and as an ssh alias with user/host/port" \
+  bash -c "grep -q '^Host tnbox9$' '$NH/.ssh/config' && grep -q 'HostName 10.9.9.9' '$NH/.ssh/config' && grep -q 'User dev' '$NH/.ssh/config' && grep -q 'Port 2222' '$NH/.ssh/config'"
+t "ssh config is private (0600)"  python3 -c "import os,sys; sys.exit(0 if os.stat('$NH/.ssh/config').st_mode & 0o777 == 0o600 else 1)"
+t "a second node appends"       nt node add tnlab9 me@tnlab9.invalid --register-only
+t "...both registered"          grep -q '^TESS_PEERS="tnbox9=tnbox9 tnlab9=tnlab9"$' "$NH/.config/tess/config"
+t "re-adding is idempotent"     bash -c "env -u TESS_PEERS HOME='$NH' bash '$TESS' node add tnbox9 dev@10.9.9.9:2222 --register-only >/dev/null && test \"\$(grep -c '^Host tnbox9$' '$NH/.ssh/config')\" = 1 && grep -q '^TESS_PEERS=\"tnbox9=tnbox9 tnlab9=tnlab9\"$' '$NH/.config/tess/config'"
+cp "$NH/.ssh/config" "$TMP/sshconf.before"
+t_not "an unreachable machine is not added"  bash -c "env -u TESS_PEERS HOME='$NH' bash '$TESS' node add ghost x@nowhere.invalid </dev/null"
+t "...and leaves nothing behind"  bash -c "cmp -s '$NH/.ssh/config' '$TMP/sshconf.before' && ! grep -q ghost '$NH/.config/tess/config'"
+t "node rm forgets one"         nt node rm tnbox9
+t "...only that one"            bash -c "grep -q '^TESS_PEERS=\"tnlab9=tnlab9\"$' '$NH/.config/tess/config' && ! grep -q 'Host tnbox9' '$NH/.ssh/config' && grep -q '^Host tnlab9$' '$NH/.ssh/config'"
+t_not "rm of an unknown node errors"  nt node rm nope
+t_not "a node name dispatches (unreachable ls fails cleanly)"  nt tnlab9 ls
+t "...without a traceback"      bash -c "env -u TESS_PEERS HOME='$NH' bash '$TESS' tnlab9 ls 2>&1 | grep -qv Traceback"
+t "...and names are case-insensitive"  bash -c "env -u TESS_PEERS HOME='$NH' bash '$TESS' TNLAB9 ls 2>&1 | grep -q 'tnlab9:'"
+t_not "a shell needs a terminal"  bash -c "env -u TESS_PEERS HOME='$NH' bash '$TESS' tnlab9 </dev/null"
+t "...and points at run"        bash -c "env -u TESS_PEERS HOME='$NH' bash '$TESS' tnlab9 </dev/null 2>&1 | grep -q 'tess tnlab9 run'"
+t_not "an unsafe session name is refused"  nt tnlab9 kill 'x;y'
+t_not "two stray words are not a session"  nt tnlab9 foo bar
+t_not "killall refuses without --yes off a tty"  bash -c "env TESS_PEERS='tnlab9=127.0.0.1' HOME='$NH' bash '$TESS' node bogusnode killall </dev/null"
+t "node <name> … is the same as <name> …"  bash -c "env -u TESS_PEERS HOME='$NH' bash '$TESS' node tnlab9 ls 2>&1 | grep -q 'tnlab9:'"
+t "handoff/tunnel see the node"  bash -c "env -u TESS_PEERS HOME='$NH' bash '$TESS' handoff 2>&1 | grep -q tnlab9"
+t "node_sessions runs here"     python3 "$ROOT_DIR/libexec/fleet/node_sessions.py" --json
+t "node pull --help is safe"    python3 "$ROOT_DIR/libexec/fleet/node_pull.py" x --help
+
 t "reminders stays exit-0 unconfigured" \
   bash -c "env -i HOME='$FAKE/home' PATH='$FAKE/bin:/usr/bin:/bin' bash '$TESS' reminders >/dev/null 2>&1"
 

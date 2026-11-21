@@ -178,7 +178,10 @@ def main():
                 f"  Pick another local port:  tess tunnel {name} <free>:{remote}")
 
     target = ps[name]
-    cmd = ["ssh", "-N", "-o", "ExitOnForwardFailure=yes", "-o", "ServerAliveInterval=30"]
+    # Its own connection, never a shared ControlMaster: handed to a master, the
+    # forward would outlive this process and --list/--stop could not see it.
+    cmd = ["ssh", "-N", "-o", "ExitOnForwardFailure=yes", "-o", "ServerAliveInterval=30",
+           "-o", "ControlMaster=no", "-o", "ControlPath=none"]
     for local, remote in pairs:
         cmd += ["-L", f"{local}:localhost:{remote}"]
     cmd.append(target)

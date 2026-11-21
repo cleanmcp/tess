@@ -95,12 +95,19 @@ cat <<EOF
      ${C}tess claude${R}|${C}kimi${R}|${C}cursor${R} ${D}[feat] ["task"] [--model M --effort E --context C --fast]${R}
                                  spawn — worktree auto-created, settings VERIFIED, roles ENFORCED
      ${C}tess resume${R}                   resume ANY past Claude/Kimi/Cursor session (any folder)
-     ${C}tess handoff${R} ${D}<peer>|back${R}      move a live session (context + folder + uncommitted work) between machines
-     ${C}tess tunnel${R} ${D}<peer> <port>${R}     reach a peer's localhost here ${D}(dev servers · CLI sign-ins)${R}
      ${C}tess think${R} · ${C}post${R}             thinking partner · content partner ${D}(both use your vault)${R}
      ${C}tess local${R} ${D}[prompt]${R}           offline AI via ollama ${D}(also ${C}tess small${R} / ${C}big${R})${R}
      ${C}tess ask${R} ${D}"<q>"${R} · ${C}listen${R} · ${C}voice${R}  say it in words — routed + spoken ${D}(listen = hands-free)${R}
      ${C}tess loop${R} ${D}<claude|kimi> "<goal>"${R}  autonomous manager→worker loop till DONE
+
+  ${B}${G}🖧  NODES${R} ${D}(your other machines — add one once, then its name is a command)${R}
+     ${C}tess node${R}                     every node: reachable · tess · what is running there
+     ${C}tess node add${R} ${D}<name> <user@host>${R}  set a machine up end to end ${D}(key · ssh alias · tess · tools)${R}
+     ${C}tess <node>${R} ${D}[name]${R}            a persistent shell there ${D}(survives closing the laptop · ${C}ls${R}${D} · ${C}kill${R}${D})${R}
+     ${C}tess <node> handoff${R} · ${C}back${R}    move this live session there ${D}(context + folder + uncommitted work)${R} · take it back
+     ${C}tess <node> tunnel${R} ${D}<port>${R}     its localhost here ${D}(dev servers · CLI sign-ins)${R}
+     ${C}tess <node> pull${R} · ${C}run${R} ${D}<cmd>${R}   copy files down · run one command there
+     ${D}also: ${C}tess handoff${R}${D} <node>|back · ${C}tess tunnel${R}${D} <node> <port> · ${C}tess new --on${R}${D} <node> · ${C}tess node me${R}${D} · ${C}rm${R}
 
   ${B}${G}🚁 THE FLEET${R} ${D}(drive MANY sessions at once — you are @bigboss · backend needs uv)${R}
      ${C}tess team${R} ${D}<spec.yaml>${R}         fan out N agents (prompts/models/roles) ${D}--dry-run first${R}
@@ -317,7 +324,7 @@ case "$cmd" in
 esac
 
 # words that can never be feature/agent names (subcommands + obvious traps)
-TESS_RESERVED="help menu version new repos ls list rm remove clean env branches path wt worktrees claude kimi cursor agents agent loop resume r handoff tunnel local offline small big med medium think partner post write brand boss ask voice listen git lg fish matrix bonsai pipes dex doctor disk cheat fix-files fixfiles update wire commands custom open app launch apps login startup brief hub person company add log people companies reminders todo todos followups calendar cal messages msg chat thread send text calls mail email music read book readpos done inbox report digest status team orchestrate ship wait watch approve inject tell kill hcom diff spend all vault note notes kanban tasks base bases links canvas"
+TESS_RESERVED="help menu version new repos ls list rm remove clean env branches path wt worktrees claude kimi cursor agents agent loop resume r handoff tunnel node nodes local offline small big med medium think partner post write brand boss ask voice listen git lg fish matrix bonsai pipes dex doctor disk cheat fix-files fixfiles update wire commands custom open app launch apps login startup brief hub person company add log people companies reminders todo todos followups calendar cal messages msg chat thread send text calls mail email music read book readpos done inbox report digest status team orchestrate ship wait watch approve inject tell kill hcom diff spend all vault note notes kanban tasks base bases links canvas"
 export TESS_RESERVED
 _validpath() {  # _validpath <name> <what> — flag/path safety only, NO reserved check.
   # Used on paths that manage EXISTING features (rm/path/env/done/ship): a feature
@@ -526,6 +533,7 @@ case "$cmd" in
   resume|r) exec python3 "$TESS_LIB/fleet/resume.py" "$@" ;;
   handoff)  exec python3 "$TESS_LIB/fleet/handoff.py" "$@" ;;   # move a session between machines
   tunnel)   exec python3 "$TESS_LIB/fleet/tunnel.py" "$@" ;;   # reach a peer's localhost
+  node|nodes) exec python3 "$TESS_LIB/fleet/node.py" "$@" ;;   # your other machines: add · see · use
   local|offline)   # offline AI (no internet). `tess local [small|big] [prompt]`
     case "${1:-}" in
       small|med|medium|big) t="$1"; shift; _localrun "$t" "$@" ;;
@@ -667,6 +675,14 @@ PL
     if [ -x "$HOME/.config/tess/commands/$cmd" ]; then
       exec "$HOME/.config/tess/commands/$cmd" "$@"
     fi
+    # a node's name is a command: `tess mini` (a shell there), `tess mini handoff`,
+    # `tess mini tunnel 3000`, `tess mini ls` … Nodes are TESS_PEERS entries.
+    _lc="$(printf '%s' "$cmd" | tr '[:upper:]' '[:lower:]')"
+    for _p in $TESS_PEERS; do
+      if [ "$(printf '%s' "${_p%%=*}" | tr '[:upper:]' '[:lower:]')" = "$_lc" ] && [ "$_p" != "${_p#*=}" ]; then
+        exec python3 "$TESS_LIB/fleet/node.py" on "$_lc" "$@"
+      fi
+    done
     # an EXACT note-name match beats the app fallback — the vault is the primary
     # brain; `tess safari` still opens Safari unless a safari.md note exists
     if [ $# -eq 0 ] && [ -d "$VAULT" ] && \

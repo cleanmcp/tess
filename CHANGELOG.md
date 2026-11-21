@@ -6,6 +6,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 ## [Unreleased]
 
 ### Added
+- **Nodes — other machines as a first-class surface.** `tess node add <name> <user@host>`
+  sets a machine up end to end (ssh alias, key install with one password prompt, dtach,
+  tess itself — cloned there or pushed over ssh), `tess node` shows every node with its
+  reachability, tess version and open shells, and a node's name becomes a command:
+  `tess mini [session]` (persistent dtach shell), `ls`/`kill`/`clean`/`killall`, `run`,
+  `handoff`/`back`, `tunnel`, `pull`, `new`. `tess node me` prints the add line for the
+  machine it runs on; `tess node rm`/`setup` manage them. See docs/nodes.md.
 - **The vault layer — tess as a knowledge-base provider for agents.** `tess vault` (the
   orientation map + `folders`/`mkdir`/`init <dir>` workspace scaffolding), `tess note`
   (new/ls/path/show — proper frontmatter, templates with `{{vars}}`), `tess kanban` (full
