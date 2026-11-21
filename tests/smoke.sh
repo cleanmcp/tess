@@ -341,7 +341,7 @@ t "...in TESS_PEERS"            grep -q '^TESS_PEERS="tnbox9=tnbox9"$' "$NH/.con
 t "...keeping the rest of the config"  grep -q '^# keep me$' "$NH/.config/tess/config"
 t "...and as an ssh alias with user/host/port" \
   bash -c "grep -q '^Host tnbox9$' '$NH/.ssh/config' && grep -q 'HostName 10.9.9.9' '$NH/.ssh/config' && grep -q 'User dev' '$NH/.ssh/config' && grep -q 'Port 2222' '$NH/.ssh/config'"
-t "ssh config is private (0600)"  bash -c "test \"\$(stat -f %Lp '$NH/.ssh/config' 2>/dev/null || stat -c %a '$NH/.ssh/config')\" = 600"
+t "ssh config is private (0600)"  python3 -c "import os,sys; sys.exit(0 if os.stat('$NH/.ssh/config').st_mode & 0o777 == 0o600 else 1)"
 t "a second node appends"       nt node add tnlab9 me@tnlab9.invalid --register-only
 t "...both registered"          grep -q '^TESS_PEERS="tnbox9=tnbox9 tnlab9=tnlab9"$' "$NH/.config/tess/config"
 t "re-adding is idempotent"     bash -c "env -u TESS_PEERS HOME='$NH' bash '$TESS' node add tnbox9 dev@10.9.9.9:2222 --register-only >/dev/null && test \"\$(grep -c '^Host tnbox9$' '$NH/.ssh/config')\" = 1 && grep -q '^TESS_PEERS=\"tnbox9=tnbox9 tnlab9=tnlab9\"$' '$NH/.config/tess/config'"
